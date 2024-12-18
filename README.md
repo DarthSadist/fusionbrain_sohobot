@@ -43,13 +43,14 @@ cd fusionbrain_sohobot
 
 ### Настройка переменных окружения
 
-Создайте файл `.env` в корневой директории проекта и добавьте туда ваши API ключи и токен бота:
+1. Создайте файл `.env` в корневой директории проекта
+2. Скопируйте содержимое файла `.env.example` в `.env`
+3. Заполните следующие переменные окружения:
+   - `API_TOKEN`: Токен вашего Telegram бота (получите у @BotFather)
+   - `FUSIONBRAIN_API_KEY`: API ключ от сервиса FusionBrain
+   - `FUSIONBRAIN_SECRET_KEY`: Секретный ключ от сервиса FusionBrain
 
-```
-API_TOKEN=ваш_телеграм_токен
-FUSIONBRAIN_API_KEY=ваш_fusionbrain_api_key
-FUSIONBRAIN_SECRET_KEY=ваш_fusionbrain_secret_key
-```
+⚠️ **Важно**: Никогда не комитьте файл `.env` в репозиторий, так как он содержит чувствительные данные!
 
 ### Запуск бота
 
