@@ -18,6 +18,9 @@ import io
 import uuid as uuid_lib
 from PIL import Image, ImageEnhance, ImageFilter
 from rembg import remove
+from collections import defaultdict
+from aiogram.utils.keyboard import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import CallbackQuery
 
 # Загрузка переменных окружения из файла .env
 load_dotenv()
@@ -112,57 +115,175 @@ class Text2ImageAPI:
         else:
             raise Exception(f'Failed to check generation: {response.text}')
 
+# Константы для callback-данных
+class CallbackData:
+    SETTINGS = "settings"
+    GENERATE = "generate"
+    SIZE_PREFIX = "size_"
+    HELP = "help"
+    BACK = "back_to_main"
+
+def get_main_keyboard() -> InlineKeyboardMarkup:
+    """Создает основную клавиатуру с главным меню"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎨 Сгенерировать изображение", callback_data=CallbackData.GENERATE)],
+        [InlineKeyboardButton(text="⚙️ Настройки", callback_data=CallbackData.SETTINGS)],
+        [InlineKeyboardButton(text="❓ Помощь", callback_data=CallbackData.HELP)]
+    ])
+
+def get_settings_keyboard() -> InlineKeyboardMarkup:
+    """Создает клавиатуру с настройками размеров"""
+    keyboard = [
+        [InlineKeyboardButton(text=size_info["label"], callback_data=f"{CallbackData.SIZE_PREFIX}{size_key}")]
+        for size_key, size_info in IMAGE_SIZES.items()
+    ]
+    keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data=CallbackData.BACK)])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+# Состояния пользователя
+class UserState:
+    def __init__(self):
+        self.width = 1024
+        self.height = 1024
+        self.awaiting_prompt = False
+
+user_states = defaultdict(UserState)
+
+# Словарь для хранения пользовательских настроек
+class UserSettings:
+    def __init__(self):
+        self.width = 1024
+        self.height = 1024
+
+user_settings = defaultdict(UserSettings)
+
+# Доступные размеры изображений
+IMAGE_SIZES = {
+    "square_small": {"width": 512, "height": 512, "label": "512x512"},
+    "square_medium": {"width": 768, "height": 768, "label": "768x768"},
+    "square_large": {"width": 1024, "height": 1024, "label": "1024x1024"},
+    "wide": {"width": 1024, "height": 576, "label": "1024x576 (Wide)"},
+    "tall": {"width": 576, "height": 1024, "label": "576x1024 (Tall)"}
+}
+
 # Регистрируем обработчики
 @dp.message(Command("start"))
 async def send_welcome(message: types.Message):
     welcome_text = (
         "Привет! Я бот для генерации изображений.\n\n"
-        "Просто отправь мне текстовое описание того, что ты хочешь увидеть на картинке, "
-        "и я постараюсь это сгенерировать.\n\n"
-        "Для получения справки используй команду /help"
+        "Используйте кнопки ниже для управления:"
     )
-    await message.reply(welcome_text)
+    await message.reply(welcome_text, reply_markup=get_main_keyboard())
 
-@dp.message(Command("help"))
-async def send_help(message: types.Message):
+@dp.callback_query(lambda c: c.data == CallbackData.HELP)
+async def show_help(callback_query: CallbackQuery):
+    settings = user_states[callback_query.from_user.id]
     help_text = (
         "🎨 Как использовать бота:\n\n"
-        "1. Отправьте текстовое описание желаемого изображения\n"
-        "2. Дождитесь генерации\n"
-        "3. Используйте кнопки под изображением для дополнительных действий\n\n"
-        "Доступные команды:\n"
-        "/start - Начать работу с ботом\n"
-        "/help - Показать это сообщение"
+        "1. Нажмите кнопку '🎨 Сгенерировать изображение'\n"
+        "2. Отправьте текстовое описание желаемого изображения\n"
+        "3. Дождитесь генерации\n\n"
+        "📐 Текущие настройки:\n"
+        f"Размер изображения: {settings.width}x{settings.height}"
     )
-    await message.reply(help_text)
+    await callback_query.message.edit_text(help_text, reply_markup=get_main_keyboard())
+    await callback_query.answer()
 
-# Обработчик для всех текстовых сообщений, кроме команд
+@dp.callback_query(lambda c: c.data == CallbackData.SETTINGS)
+async def show_settings(callback_query: CallbackQuery):
+    settings = user_states[callback_query.from_user.id]
+    await callback_query.message.edit_text(
+        f"📐 Текущий размер: {settings.width}x{settings.height}\n\n"
+        "Выберите новый размер изображения:",
+        reply_markup=get_settings_keyboard()
+    )
+    await callback_query.answer()
+
+@dp.callback_query(lambda c: c.data.startswith(CallbackData.SIZE_PREFIX))
+async def process_size_change(callback_query: CallbackQuery):
+    size_key = callback_query.data.replace(CallbackData.SIZE_PREFIX, '')
+    if size_key in IMAGE_SIZES:
+        user_id = callback_query.from_user.id
+        user_states[user_id].width = IMAGE_SIZES[size_key]["width"]
+        user_states[user_id].height = IMAGE_SIZES[size_key]["height"]
+        
+        await callback_query.message.edit_text(
+            f"✅ Размер изображения установлен: {IMAGE_SIZES[size_key]['label']}\n\n"
+            "Вернитесь в главное меню:",
+            reply_markup=get_main_keyboard()
+        )
+    await callback_query.answer()
+
+@dp.callback_query(lambda c: c.data == CallbackData.BACK)
+async def back_to_main(callback_query: CallbackQuery):
+    await callback_query.message.edit_text(
+        "Выберите действие:",
+        reply_markup=get_main_keyboard()
+    )
+    await callback_query.answer()
+
+@dp.callback_query(lambda c: c.data == CallbackData.GENERATE)
+async def start_generation(callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    user_states[user_id].awaiting_prompt = True
+    await callback_query.message.edit_text(
+        "✏️ Отправьте текстовое описание желаемого изображения:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Назад", callback_data=CallbackData.BACK)]
+        ])
+    )
+    await callback_query.answer()
+
 @dp.message(lambda message: message.text and not message.text.startswith('/'))
 async def generate_image(message: types.Message):
+    user_id = message.from_user.id
+    user_state = user_states[user_id]
+
+    # Проверяем, ожидаем ли мы промпт от пользователя
+    if not user_state.awaiting_prompt:
+        await message.reply(
+            "Пожалуйста, нажмите кнопку '🎨 Сгенерировать изображение' для начала:",
+            reply_markup=get_main_keyboard()
+        )
+        return
+
     try:
         logger.info(f"Received text message: {message.text}")
         
         if len(message.text) > Text2ImageAPI.MAX_PROMPT_LENGTH:
-            await message.reply(f"⚠️ Ваш запрос слишком длинный ({len(message.text)} символов). Он будет сокращен до {Text2ImageAPI.MAX_PROMPT_LENGTH} символов.")
+            await message.reply(
+                f"⚠️ Ваш запрос слишком длинный ({len(message.text)} символов). "
+                f"Он будет сокращен до {Text2ImageAPI.MAX_PROMPT_LENGTH} символов."
+            )
         
         # Отправляем сообщение о начале генерации
-        progress_message = await message.reply("🎨 Начинаю генерацию изображения...")
+        progress_message = await message.reply(
+            "🎨 Начинаю генерацию изображения...",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[])
+        )
         
         # Инициализируем API
         api = Text2ImageAPI('https://api-key.fusionbrain.ai', FUSIONBRAIN_API_KEY, FUSIONBRAIN_SECRET_KEY)
         
-        # Получаем список доступных моделей
         try:
             models = api.get_model()
             logger.info(f"Available models: {models}")
-            model_id = models[0]['id']  # Используем ID первой доступной модели
+            model_id = models[0]['id']
         except Exception as e:
             logger.error(f"Failed to get models: {str(e)}")
             model_id = 4  # Используем известный ID модели Kandinsky 3.1
         
-        # Запускаем генерацию
-        request_id = api.generate(message.text, model=model_id)
+        # Запускаем генерацию с настройками пользователя
+        request_id = api.generate(
+            message.text,
+            model=model_id,
+            width=user_state.width,
+            height=user_state.height
+        )
         logger.info(f"Generation started with request_id: {request_id}")
+        
+        # Сбрасываем флаг ожидания промпта
+        user_state.awaiting_prompt = False
         
         # Проверяем статус генерации
         while True:
@@ -176,26 +297,42 @@ async def generate_image(message: types.Message):
                         # Отправляем изображение
                         image_data = base64.b64decode(images[0])
                         photo = types.BufferedInputFile(image_data, filename='generated_image.png')
-                        await message.reply_photo(photo, caption="✨ Ваше изображение готово!")
+                        await message.reply_photo(
+                            photo,
+                            caption="✨ Ваше изображение готово!",
+                            reply_markup=get_main_keyboard()
+                        )
                         await progress_message.delete()
                         break
                     else:
-                        await progress_message.edit_text("❌ Изображение не было сгенерировано")
+                        await progress_message.edit_text(
+                            "❌ Изображение не было сгенерировано",
+                            reply_markup=get_main_keyboard()
+                        )
                         break
                 elif status.get('status') == 'FAILED':
-                    await progress_message.edit_text("❌ Произошла ошибка при генерации изображения")
+                    await progress_message.edit_text(
+                        "❌ Произошла ошибка при генерации изображения",
+                        reply_markup=get_main_keyboard()
+                    )
                     break
                 
                 await asyncio.sleep(1)
                 
             except Exception as e:
                 logger.error(f"Error checking generation status: {str(e)}")
-                await progress_message.edit_text("❌ Произошла ошибка при проверке статуса генерации")
+                await progress_message.edit_text(
+                    "❌ Произошла ошибка при проверке статуса генерации",
+                    reply_markup=get_main_keyboard()
+                )
                 break
             
     except Exception as e:
         logger.error(f"Error generating image: {str(e)}")
-        await message.reply("❌ Произошла ошибка при генерации изображения")
+        await message.reply(
+            "❌ Произошла ошибка при генерации изображения",
+            reply_markup=get_main_keyboard()
+        )
 
 async def main():
     # Запуск бота
