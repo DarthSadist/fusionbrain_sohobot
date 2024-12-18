@@ -1,7 +1,17 @@
+import os
+# Настройки для onnxruntime
+os.environ['ONNXRUNTIME_PROVIDERS'] = 'CPUExecutionProvider'
+os.environ['ORT_LOGGING_LEVEL'] = '3'  # Только критические ошибки
+os.environ['ORT_DISABLE_TENSORRT'] = '1'
+os.environ['ORT_DISABLE_CUDA'] = '1'
+
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=RuntimeWarning, module="onnxruntime")
 
 import logging
+# Отключаем сообщения об ошибках от onnxruntime
+logging.getLogger('onnxruntime').setLevel(logging.ERROR)
 import base64
 import json
 import time
@@ -122,23 +132,82 @@ class CallbackData:
     SIZE_PREFIX = "size_"
     HELP = "help"
     BACK = "back_to_main"
+    REMOVE_BG = "remove_bg_"  # Добавляем новый callback для удаления фона
 
-def get_main_keyboard() -> InlineKeyboardMarkup:
-    """Создает основную клавиатуру с главным меню"""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎨 Сгенерировать изображение", callback_data=CallbackData.GENERATE)],
-        [InlineKeyboardButton(text="⚙️ Настройки", callback_data=CallbackData.SETTINGS)],
-        [InlineKeyboardButton(text="❓ Помощь", callback_data=CallbackData.HELP)]
-    ])
+# Добавляем класс для работы с изображениями
+class ImageProcessor:
+    # Максимальный размер изображения для обработки
+    MAX_SIZE = 1500
+    # Храним экземпляр модели
+    _model = None
+    
+    @classmethod
+    def _get_model(cls):
+        """Получает или создает экземпляр модели"""
+        if cls._model is None:
+            from rembg.bg import remove as remove_bg
+            cls._model = remove_bg
+        return cls._model
 
-def get_settings_keyboard() -> InlineKeyboardMarkup:
-    """Создает клавиатуру с настройками размеров"""
-    keyboard = [
-        [InlineKeyboardButton(text=size_info["label"], callback_data=f"{CallbackData.SIZE_PREFIX}{size_key}")]
-        for size_key, size_info in IMAGE_SIZES.items()
-    ]
-    keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data=CallbackData.BACK)])
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+    @classmethod
+    def _resize_if_needed(cls, image: Image.Image) -> tuple[Image.Image, tuple[int, int]]:
+        """Уменьшает изображение, если оно слишком большое"""
+        original_size = image.size
+        width, height = original_size
+        
+        # Проверяем, нужно ли уменьшать
+        if max(width, height) <= cls.MAX_SIZE:
+            return image, None
+            
+        # Вычисляем новый размер с сохранением пропорций
+        if width > height:
+            new_width = cls.MAX_SIZE
+            new_height = int(height * (cls.MAX_SIZE / width))
+        else:
+            new_height = cls.MAX_SIZE
+            new_width = int(width * (cls.MAX_SIZE / height))
+            
+        # Уменьшаем изображение
+        resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        return resized_image, original_size
+
+    @classmethod
+    def _restore_size(cls, image: Image.Image, original_size: tuple[int, int]) -> Image.Image:
+        """Возвращает изображение к исходному размеру"""
+        if original_size:
+            return image.resize(original_size, Image.Resampling.LANCZOS)
+        return image
+
+    @classmethod
+    async def remove_background(cls, image_data: bytes) -> bytes:
+        """Удаляет фон с изображения"""
+        try:
+            # Создаем объект изображения из байтов
+            input_image = Image.open(io.BytesIO(image_data))
+            
+            # Конвертируем в RGB, если нужно
+            if input_image.mode not in ('RGB', 'RGBA'):
+                input_image = input_image.convert('RGB')
+            
+            # Уменьшаем размер, если нужно
+            resized_image, original_size = cls._resize_if_needed(input_image)
+            
+            # Получаем модель и удаляем фон
+            remove_bg = cls._get_model()
+            output_image = remove_bg(resized_image)
+            
+            # Возвращаем к исходному размеру, если изображение было уменьшено
+            if original_size:
+                output_image = cls._restore_size(output_image, original_size)
+            
+            # Сохраняем результат в байты
+            output_buffer = io.BytesIO()
+            output_image.save(output_buffer, format='PNG', optimize=True)
+            return output_buffer.getvalue()
+            
+        except Exception as e:
+            logger.error(f"Error removing background: {str(e)}")
+            raise
 
 # Состояния пользователя
 class UserState:
@@ -146,6 +215,8 @@ class UserState:
         self.width = 1024
         self.height = 1024
         self.awaiting_prompt = False
+        self.last_image = None  # Хранение последнего сгенерированного изображения
+        self.last_image_id = None  # ID последнего изображения для callback
 
 user_states = defaultdict(UserState)
 
@@ -294,13 +365,18 @@ async def generate_image(message: types.Message):
                 if status.get('status') == 'DONE':
                     images = status.get('images', [])
                     if images:
-                        # Отправляем изображение
+                        # Сохраняем изображение в состоянии пользователя
                         image_data = base64.b64decode(images[0])
+                        user_state.last_image = image_data
+                        image_id = str(uuid_lib.uuid4())
+                        user_state.last_image_id = image_id
+                        
+                        # Отправляем изображение
                         photo = types.BufferedInputFile(image_data, filename='generated_image.png')
                         await message.reply_photo(
                             photo,
-                            caption="✨ Ваше изображение готово!",
-                            reply_markup=get_main_keyboard()
+                            caption="✨ Ваше изображение готово! Вы можете удалить фон или вернуться в главное меню:",
+                            reply_markup=get_image_keyboard(image_id)
                         )
                         await progress_message.delete()
                         break
@@ -331,6 +407,78 @@ async def generate_image(message: types.Message):
         logger.error(f"Error generating image: {str(e)}")
         await message.reply(
             "❌ Произошла ошибка при генерации изображения",
+            reply_markup=get_main_keyboard()
+        )
+
+def get_image_keyboard(image_id: str) -> InlineKeyboardMarkup:
+    """Создает клавиатуру для изображения"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🎭 Удалить фон", callback_data=f"{CallbackData.REMOVE_BG}{image_id}"),
+            InlineKeyboardButton(text="🏠 В главное меню", callback_data=CallbackData.BACK)
+        ]
+    ])
+
+def get_main_keyboard() -> InlineKeyboardMarkup:
+    """Создает основную клавиатуру с главным меню"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎨 Сгенерировать изображение", callback_data=CallbackData.GENERATE)],
+        [InlineKeyboardButton(text="⚙️ Настройки", callback_data=CallbackData.SETTINGS)],
+        [InlineKeyboardButton(text="❓ Помощь", callback_data=CallbackData.HELP)]
+    ])
+
+def get_settings_keyboard() -> InlineKeyboardMarkup:
+    """Создает клавиатуру с настройками размеров"""
+    keyboard = [
+        [InlineKeyboardButton(text=size_info["label"], callback_data=f"{CallbackData.SIZE_PREFIX}{size_key}")]
+        for size_key, size_info in IMAGE_SIZES.items()
+    ]
+    keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data=CallbackData.BACK)])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+# Обработчик для удаления фона
+@dp.callback_query(lambda c: c.data.startswith(CallbackData.REMOVE_BG))
+async def process_remove_background(callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    user_state = user_states[user_id]
+    image_id = callback_query.data.replace(CallbackData.REMOVE_BG, '')
+    
+    # Проверяем, что это последнее сгенерированное изображение
+    if not user_state.last_image or user_state.last_image_id != image_id:
+        await callback_query.answer("❌ Изображение недоступно или устарело")
+        return
+
+    try:
+        # Отправляем сообщение о начале обработки
+        await callback_query.answer("🎭 Начинаю удаление фона...")
+        processing_message = await callback_query.message.reply(
+            "🎭 Удаляю фон с изображения...",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[])
+        )
+
+        # Удаляем фон
+        image_without_bg = await ImageProcessor.remove_background(user_state.last_image)
+        
+        # Сохраняем новое изображение
+        user_state.last_image = image_without_bg
+        new_image_id = str(uuid_lib.uuid4())
+        user_state.last_image_id = new_image_id
+
+        # Отправляем обработанное изображение
+        photo = types.BufferedInputFile(image_without_bg, filename='image_without_bg.png')
+        await callback_query.message.reply_photo(
+            photo,
+            caption="✨ Фон успешно удален!",
+            reply_markup=get_main_keyboard()
+        )
+        
+        # Удаляем сообщение о процессе
+        await processing_message.delete()
+        
+    except Exception as e:
+        logger.error(f"Error removing background: {str(e)}")
+        await callback_query.message.reply(
+            "❌ Произошла ошибка при удалении фона",
             reply_markup=get_main_keyboard()
         )
 
