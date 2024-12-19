@@ -150,14 +150,119 @@ class Text2ImageAPI:
         else:
             raise Exception(f'Failed to check generation: {response.text}')
 
-# Константы для callback-данных
+# Константы для эмодзи
+class Emoji:
+    SETTINGS = "⚙️"
+    CREATE = "🎨"
+    BACK = "◀️"
+    HELP = "❓"
+    REMOVE_BG = "🎭"
+    WAIT = "⏳"
+    ERROR = "❌"
+    SUCCESS = "✅"
+    EDIT = "✏️"
+
+# Константы для текстов
+class Messages:
+    WELCOME = f"""
+Привет! Я бот для создания изображений с помощью нейросети Kandinsky.
+
+Что я умею:
+• Создавать изображения по текстовому описанию
+• Удалять фон с готовых изображений
+• Создавать изображения разных размеров
+
+Нажмите кнопку {Emoji.CREATE} <b>Создать</b>, чтобы начать!
+"""
+    
+    HELP = f"""
+{Emoji.CREATE} <b>Как использовать бота:</b>
+
+1. Нажмите кнопку {Emoji.CREATE} <b>Создать</b>
+2. Опишите желаемое изображение
+3. Дождитесь результата
+4. Используйте кнопку {Emoji.REMOVE_BG} для удаления фона
+
+{Emoji.SETTINGS} <b>Настройки:</b>
+• Выберите размер будущего изображения
+• Доступны квадратные, широкие и вертикальные форматы
+"""
+    
+    SETTINGS = f"""{Emoji.SETTINGS} <b>Текущие настройки</b>
+
+Размер изображения: <b>{{width}}x{{height}}</b>
+
+Выберите новый размер:"""
+    
+    PROMPT = f"""{Emoji.EDIT} <b>Опишите изображение</b>
+
+Напишите, что бы вы хотели увидеть на изображении. 
+Чем подробнее описание, тем лучше результат!
+
+Примеры:
+• "Космический корабль в стиле киберпанк"
+• "Котенок играет с клубком, акварель"
+• "Закат на море, масляная живопись"
+"""
+    
+    GENERATING = f"{Emoji.WAIT} <b>Генерирую изображение...</b>"
+    REMOVING_BG = f"{Emoji.WAIT} <b>Удаляю фон...</b>"
+    SIZE_CHANGED = f"{Emoji.SUCCESS} Установлен размер: <b>{{size}}</b>"
+    ERROR_GEN = f"{Emoji.ERROR} Ошибка при генерации: {{error}}"
+    ERROR_SIZE = f"{Emoji.ERROR} Ошибка: неверный размер"
+    ERROR_CRITICAL = f"{Emoji.ERROR} Произошла критическая ошибка"
+    BG_REMOVED = f"{Emoji.SUCCESS} Фон успешно удален!"
+    MAIN_MENU = "Выберите действие:"
+
+# Константы для колбэков
 class CallbackData:
     SETTINGS = "settings"
     GENERATE = "generate"
     SIZE_PREFIX = "size_"
     HELP = "help"
     BACK = "back_to_main"
-    REMOVE_BG = "remove_bg"  # Исправляем название константы
+    REMOVE_BG = "remove_bg"
+
+# Доступные размеры изображений
+IMAGE_SIZES = {
+    "square": {
+        "width": 1024, 
+        "height": 1024, 
+        "label": "Квадратное 1024×1024",
+        "description": "Идеально для портретов и симметричных композиций"
+    },
+    "wide": {
+        "width": 1024, 
+        "height": 576, 
+        "label": "Широкое 1024×576",
+        "description": "Отлично подходит для пейзажей и панорамных сцен"
+    },
+    "tall": {
+        "width": 576, 
+        "height": 1024, 
+        "label": "Вертикальное 576×1024",
+        "description": "Лучший выбор для портретов в полный рост"
+    }
+}
+
+# Состояния пользователя
+class UserState:
+    def __init__(self):
+        self.width = 1024
+        self.height = 1024
+        self.awaiting_prompt = False
+        self.last_image = None  # Хранение последнего сгенерированного изображения
+        self.last_image_id = None  # ID последнего изображения для callback
+
+user_states = defaultdict(UserState)
+
+# Словарь для хранения пользовательских настроек
+class UserSettings:
+    def __init__(self):
+        self.width = 1024
+        self.height = 1024
+
+user_settings = defaultdict(UserSettings)
 
 # Добавляем класс для работы с изображениями
 class ImageProcessor:
@@ -234,32 +339,6 @@ class ImageProcessor:
             logger.error(f"Error removing background: {str(e)}")
             raise
 
-# Состояния пользователя
-class UserState:
-    def __init__(self):
-        self.width = 1024
-        self.height = 1024
-        self.awaiting_prompt = False
-        self.last_image = None  # Хранение последнего сгенерированного изображения
-        self.last_image_id = None  # ID последнего изображения для callback
-
-user_states = defaultdict(UserState)
-
-# Словарь для хранения пользовательских настроек
-class UserSettings:
-    def __init__(self):
-        self.width = 1024
-        self.height = 1024
-
-user_settings = defaultdict(UserSettings)
-
-# Доступные размеры изображений
-IMAGE_SIZES = {
-    "square": {"width": 1024, "height": 1024, "label": "Квадратное (1024x1024)"},
-    "wide": {"width": 1024, "height": 576, "label": "Широкое (1024x576)"},
-    "tall": {"width": 576, "height": 1024, "label": "Вертикальное (576x1024)"}
-}
-
 # Регистрируем обработчики
 @dp.message(Command("start"))
 async def send_welcome(message: types.Message):
@@ -267,7 +346,7 @@ async def send_welcome(message: types.Message):
     logger.info(f"Новый пользователь начал работу с ботом", extra={'user_id': user_id})
     keyboard = get_main_keyboard()
     await message.answer(
-        "Привет! Я бот для генерации изображений. Что бы вы хотели создать?",
+        Messages.WELCOME,
         reply_markup=keyboard
     )
 
@@ -284,14 +363,7 @@ async def update_message(message: types.Message, text: str, reply_markup: Inline
 async def show_help(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     logger.info(f"Пользователь запросил помощь", extra={'user_id': user_id})
-    help_text = """
-    🎨 Как использовать бота:
-    1. Нажмите 'Создать' для начала генерации
-    2. Введите описание желаемого изображения
-    3. Дождитесь результата
-    
-    ⚙️ В настройках вы можете изменить размер генерируемого изображения.
-    """
+    help_text = Messages.HELP
     await update_message(callback_query.message, help_text, get_main_keyboard())
     await callback_query.answer()
 
@@ -302,7 +374,7 @@ async def show_settings(callback_query: CallbackQuery):
     settings = user_settings[user_id]
     await update_message(
         callback_query.message,
-        f"⚙️ Текущий размер: {settings.width}x{settings.height}\n\nВыберите новый размер:",
+        Messages.SETTINGS.format(width=settings.width, height=settings.height),
         get_settings_keyboard()
     )
     await callback_query.answer()
@@ -326,7 +398,7 @@ async def process_size_change(callback_query: CallbackQuery):
         
         await update_message(
             callback_query.message,
-            f"✅ Установлен размер: {size_config['label']}\n\nВыберите действие:",
+            Messages.SIZE_CHANGED.format(size=size_config['label']),
             get_main_keyboard()
         )
         await callback_query.answer()
@@ -343,7 +415,7 @@ async def start_generation(callback_query: CallbackQuery):
     
     await update_message(
         callback_query.message,
-        "✏️ Опишите изображение, которое хотите сгенерировать:",
+        Messages.PROMPT,
         get_prompt_keyboard()
     )
     await callback_query.answer()
@@ -352,7 +424,7 @@ async def start_generation(callback_query: CallbackQuery):
 async def back_to_main(callback_query: CallbackQuery):
     await update_message(
         callback_query.message,
-        "Выберите действие:",
+        Messages.MAIN_MENU,
         get_main_keyboard()
     )
     await callback_query.answer()
@@ -375,7 +447,7 @@ async def generate_image(message: types.Message):
         # Получаем настройки пользователя
         settings = user_settings[user_id]
         
-        processing_message = await message.answer("⏳ Генерирую изображение...")
+        processing_message = await message.answer(Messages.GENERATING)
         
         try:
             # Инициализация API
@@ -421,21 +493,21 @@ async def generate_image(message: types.Message):
                 elif status["status"] == "FAILED":
                     error_msg = status.get("error", "Неизвестная ошибка")
                     logger.error(f"Ошибка генерации: {error_msg}", extra={'user_id': user_id})
-                    await message.answer(f"❌ Ошибка при генерации: {error_msg}")
+                    await message.answer(Messages.ERROR_GEN.format(error=error_msg))
                     break
         
         except CensorshipError as e:
             logger.warning(f"Ошибка цензуры: {str(e)}", extra={'user_id': user_id})
-            await message.answer(f"❌ {str(e)}")
+            await message.answer(str(e))
         except Exception as e:
             logger.error(f"Неожиданная ошибка: {str(e)}", exc_info=True, extra={'user_id': user_id})
-            await message.answer("❌ Произошла ошибка при генерации изображения")
+            await message.answer(Messages.ERROR_CRITICAL)
         finally:
             await processing_message.delete()
             
     except Exception as e:
         logger.error(f"Критическая ошибка: {str(e)}", exc_info=True, extra={'user_id': user_id})
-        await message.answer("❌ Произошла критическая ошибка")
+        await message.answer(Messages.ERROR_CRITICAL)
 
 @dp.callback_query(lambda c: c.data.startswith(CallbackData.REMOVE_BG))
 async def process_remove_background(callback_query: CallbackQuery):
@@ -453,7 +525,7 @@ async def process_remove_background(callback_query: CallbackQuery):
             return
         
         # Отправляем сообщение о начале обработки
-        processing_message = await callback_query.message.answer("⏳ Удаляю фон...")
+        processing_message = await callback_query.message.answer(Messages.REMOVING_BG)
         
         try:
             # Удаляем фон
@@ -467,30 +539,34 @@ async def process_remove_background(callback_query: CallbackQuery):
                     image_without_bg,
                     filename="image_without_bg.png"
                 ),
-                caption="✨ Фон успешно удален!",
+                caption=Messages.BG_REMOVED,
                 reply_markup=get_main_keyboard()
             )
             
         except Exception as e:
             logger.error(f"Ошибка при удалении фона: {str(e)}", exc_info=True, extra={'user_id': user_id})
-            await callback_query.message.answer("❌ Ошибка при удалении фона")
+            await callback_query.message.answer(Messages.ERROR_CRITICAL)
             
         finally:
             await processing_message.delete()
             
     except Exception as e:
         logger.error(f"Критическая ошибка при удалении фона: {str(e)}", exc_info=True, extra={'user_id': user_id})
-        await callback_query.message.answer("❌ Произошла критическая ошибка")
+        await callback_query.message.answer(Messages.ERROR_CRITICAL)
 
 def get_image_keyboard(image_id: str) -> InlineKeyboardMarkup:
     """Создает клавиатуру для изображения"""
     keyboard = [
         [InlineKeyboardButton(
-            text="🎭 Удалить фон",
+            text=f"{Emoji.REMOVE_BG} Удалить фон",
             callback_data=f"{CallbackData.REMOVE_BG}{image_id}"
         )],
         [InlineKeyboardButton(
-            text="◀️ Назад",
+            text=f"{Emoji.CREATE} Создать новое",
+            callback_data=CallbackData.GENERATE
+        )],
+        [InlineKeyboardButton(
+            text=f"{Emoji.BACK} В главное меню",
             callback_data=CallbackData.BACK
         )]
     ]
@@ -499,9 +575,9 @@ def get_image_keyboard(image_id: str) -> InlineKeyboardMarkup:
 def get_main_keyboard() -> InlineKeyboardMarkup:
     """Создает основную клавиатуру с главным меню"""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎨 Сгенерировать изображение", callback_data=CallbackData.GENERATE)],
-        [InlineKeyboardButton(text="⚙️ Настройки", callback_data=CallbackData.SETTINGS)],
-        [InlineKeyboardButton(text="❓ Помощь", callback_data=CallbackData.HELP)]
+        [InlineKeyboardButton(text=f"{Emoji.CREATE} Создать", callback_data=CallbackData.GENERATE)],
+        [InlineKeyboardButton(text=f"{Emoji.SETTINGS} Настройки", callback_data=CallbackData.SETTINGS)],
+        [InlineKeyboardButton(text=f"{Emoji.HELP} Помощь", callback_data=CallbackData.HELP)]
     ])
 
 def get_settings_keyboard() -> InlineKeyboardMarkup:
@@ -512,7 +588,7 @@ def get_settings_keyboard() -> InlineKeyboardMarkup:
     for size_key, size_config in IMAGE_SIZES.items():
         keyboard.append([
             InlineKeyboardButton(
-                text=size_config["label"],
+                text=f"{size_config['label']} - {size_config['description']}",
                 callback_data=f"{CallbackData.SIZE_PREFIX}{size_key}"
             )
         ])
@@ -520,7 +596,7 @@ def get_settings_keyboard() -> InlineKeyboardMarkup:
     # Добавляем кнопку возврата
     keyboard.append([
         InlineKeyboardButton(
-            text="◀️ Назад",
+            text=f"{Emoji.BACK} В главное меню",
             callback_data=CallbackData.BACK
         )
     ])
@@ -530,7 +606,7 @@ def get_settings_keyboard() -> InlineKeyboardMarkup:
 def get_prompt_keyboard() -> InlineKeyboardMarkup:
     """Создает клавиатуру для режима ввода промпта"""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="◀️ Вернуться в меню", callback_data=CallbackData.BACK)]
+        [InlineKeyboardButton(text=f"{Emoji.BACK} В главное меню", callback_data=CallbackData.BACK)]
     ])
 
 async def main():
