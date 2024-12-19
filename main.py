@@ -10,27 +10,56 @@ warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="onnxruntime")
 
 import logging
-# Отключаем сообщения об ошибках от onnxruntime
-logging.getLogger('onnxruntime').setLevel(logging.ERROR)
+import logging.handlers
+
+# Создаем форматтер для логов
+log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - [USER_ID:%(user_id)s] - %(message)s')
+
+# Создаем файловый обработчик
+file_handler = logging.handlers.RotatingFileHandler(
+    'bot.log',
+    maxBytes=10485760,  # 10MB
+    backupCount=5,
+    encoding='utf-8'
+)
+file_handler.setFormatter(log_formatter)
+
+# Создаем консольный обработчик
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(log_formatter)
+
+# Настраиваем корневой логгер
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+# Добавляем фильтр для user_id
+class UserIDFilter(logging.Filter):
+    def filter(self, record):
+        if not hasattr(record, 'user_id'):
+            record.user_id = 'N/A'
+        return True
+
+logger.addFilter(UserIDFilter())
+
 import base64
 import json
 import time
 import requests
-import asyncio
-import os
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.client.default import DefaultBotProperties
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.exceptions import TelegramBadRequest
 import asyncio
 import io
 import uuid as uuid_lib
 from PIL import Image, ImageEnhance, ImageFilter
 from rembg import remove
 from collections import defaultdict
-from aiogram.utils.keyboard import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.types import CallbackQuery
 
 # Загрузка переменных окружения из файла .env
 load_dotenv()
@@ -39,10 +68,6 @@ load_dotenv()
 API_TOKEN = os.getenv('API_TOKEN')
 FUSIONBRAIN_API_KEY = os.getenv('FUSIONBRAIN_API_KEY')
 FUSIONBRAIN_SECRET_KEY = os.getenv('FUSIONBRAIN_SECRET_KEY')
-
-# Настройка логирования
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 START_IMAGE_URL = 'https://ваша ссылка на картинку'
 
@@ -132,7 +157,7 @@ class CallbackData:
     SIZE_PREFIX = "size_"
     HELP = "help"
     BACK = "back_to_main"
-    REMOVE_BG = "remove_bg_"  # Добавляем новый callback для удаления фона
+    REMOVE_BG = "remove_bg"  # Исправляем название константы
 
 # Добавляем класс для работы с изображениями
 class ImageProcessor:
@@ -230,194 +255,246 @@ user_settings = defaultdict(UserSettings)
 
 # Доступные размеры изображений
 IMAGE_SIZES = {
-    "square_small": {"width": 512, "height": 512, "label": "512x512"},
-    "square_medium": {"width": 768, "height": 768, "label": "768x768"},
-    "square_large": {"width": 1024, "height": 1024, "label": "1024x1024"},
-    "wide": {"width": 1024, "height": 576, "label": "1024x576 (Wide)"},
-    "tall": {"width": 576, "height": 1024, "label": "576x1024 (Tall)"}
+    "square": {"width": 1024, "height": 1024, "label": "Квадратное (1024x1024)"},
+    "wide": {"width": 1024, "height": 576, "label": "Широкое (1024x576)"},
+    "tall": {"width": 576, "height": 1024, "label": "Вертикальное (576x1024)"}
 }
 
 # Регистрируем обработчики
 @dp.message(Command("start"))
 async def send_welcome(message: types.Message):
-    welcome_text = (
-        "Привет! Я бот для генерации изображений.\n\n"
-        "Используйте кнопки ниже для управления:"
+    user_id = message.from_user.id
+    logger.info(f"Новый пользователь начал работу с ботом", extra={'user_id': user_id})
+    keyboard = get_main_keyboard()
+    await message.answer(
+        "Привет! Я бот для генерации изображений. Что бы вы хотели создать?",
+        reply_markup=keyboard
     )
-    await message.reply(welcome_text, reply_markup=get_main_keyboard())
+
+async def update_message(message: types.Message, text: str, reply_markup: InlineKeyboardMarkup = None) -> None:
+    """Обновляет или отправляет новое сообщение в зависимости от типа текущего сообщения"""
+    try:
+        # Пробуем отредактировать текущее сообщение
+        await message.edit_text(text, reply_markup=reply_markup)
+    except (TelegramBadRequest, AttributeError):
+        # Если не получилось (например, это сообщение с фото), отправляем новое
+        await message.answer(text, reply_markup=reply_markup)
 
 @dp.callback_query(lambda c: c.data == CallbackData.HELP)
 async def show_help(callback_query: CallbackQuery):
-    settings = user_states[callback_query.from_user.id]
-    help_text = (
-        "🎨 Как использовать бота:\n\n"
-        "1. Нажмите кнопку '🎨 Сгенерировать изображение'\n"
-        "2. Отправьте текстовое описание желаемого изображения\n"
-        "3. Дождитесь генерации\n\n"
-        "📐 Текущие настройки:\n"
-        f"Размер изображения: {settings.width}x{settings.height}"
-    )
-    await callback_query.message.edit_text(help_text, reply_markup=get_main_keyboard())
+    user_id = callback_query.from_user.id
+    logger.info(f"Пользователь запросил помощь", extra={'user_id': user_id})
+    help_text = """
+    🎨 Как использовать бота:
+    1. Нажмите 'Создать' для начала генерации
+    2. Введите описание желаемого изображения
+    3. Дождитесь результата
+    
+    ⚙️ В настройках вы можете изменить размер генерируемого изображения.
+    """
+    await update_message(callback_query.message, help_text, get_main_keyboard())
     await callback_query.answer()
 
 @dp.callback_query(lambda c: c.data == CallbackData.SETTINGS)
 async def show_settings(callback_query: CallbackQuery):
-    settings = user_states[callback_query.from_user.id]
-    await callback_query.message.edit_text(
-        f"📐 Текущий размер: {settings.width}x{settings.height}\n\n"
-        "Выберите новый размер изображения:",
-        reply_markup=get_settings_keyboard()
+    user_id = callback_query.from_user.id
+    logger.info(f"Пользователь открыл настройки", extra={'user_id': user_id})
+    settings = user_settings[user_id]
+    await update_message(
+        callback_query.message,
+        f"⚙️ Текущий размер: {settings.width}x{settings.height}\n\nВыберите новый размер:",
+        get_settings_keyboard()
     )
     await callback_query.answer()
 
 @dp.callback_query(lambda c: c.data.startswith(CallbackData.SIZE_PREFIX))
 async def process_size_change(callback_query: CallbackQuery):
-    size_key = callback_query.data.replace(CallbackData.SIZE_PREFIX, '')
-    if size_key in IMAGE_SIZES:
+    try:
         user_id = callback_query.from_user.id
-        user_states[user_id].width = IMAGE_SIZES[size_key]["width"]
-        user_states[user_id].height = IMAGE_SIZES[size_key]["height"]
+        size_key = callback_query.data.replace(CallbackData.SIZE_PREFIX, "")
         
-        await callback_query.message.edit_text(
-            f"✅ Размер изображения установлен: {IMAGE_SIZES[size_key]['label']}\n\n"
-            "Вернитесь в главное меню:",
-            reply_markup=get_main_keyboard()
+        if size_key not in IMAGE_SIZES:
+            logger.error(f"Неверный ключ размера: {size_key}", extra={'user_id': user_id})
+            await callback_query.answer("❌ Ошибка: неверный размер")
+            return
+            
+        size_config = IMAGE_SIZES[size_key]
+        user_settings[user_id].width = size_config["width"]
+        user_settings[user_id].height = size_config["height"]
+        
+        logger.info(f"Пользователь изменил размер изображения на {size_config['label']}", extra={'user_id': user_id})
+        
+        await update_message(
+            callback_query.message,
+            f"✅ Установлен размер: {size_config['label']}\n\nВыберите действие:",
+            get_main_keyboard()
         )
-    await callback_query.answer()
-
-@dp.callback_query(lambda c: c.data == CallbackData.BACK)
-async def back_to_main(callback_query: CallbackQuery):
-    await callback_query.message.edit_text(
-        "Выберите действие:",
-        reply_markup=get_main_keyboard()
-    )
-    await callback_query.answer()
+        await callback_query.answer()
+        
+    except Exception as e:
+        logger.error(f"Ошибка при изменении размера: {str(e)}", exc_info=True, extra={'user_id': user_id})
+        await callback_query.answer("❌ Произошла ошибка")
 
 @dp.callback_query(lambda c: c.data == CallbackData.GENERATE)
 async def start_generation(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     user_states[user_id].awaiting_prompt = True
-    await callback_query.message.edit_text(
-        "✏️ Отправьте текстовое описание желаемого изображения:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="◀️ Назад", callback_data=CallbackData.BACK)]
-        ])
+    logger.info(f"Пользователь начал процесс генерации", extra={'user_id': user_id})
+    
+    await update_message(
+        callback_query.message,
+        "✏️ Опишите изображение, которое хотите сгенерировать:",
+        get_prompt_keyboard()
     )
     await callback_query.answer()
 
-@dp.message(lambda message: message.text and not message.text.startswith('/'))
+@dp.callback_query(lambda c: c.data == CallbackData.BACK)
+async def back_to_main(callback_query: CallbackQuery):
+    await update_message(
+        callback_query.message,
+        "Выберите действие:",
+        get_main_keyboard()
+    )
+    await callback_query.answer()
+
+@dp.message()
 async def generate_image(message: types.Message):
-    user_id = message.from_user.id
-    user_state = user_states[user_id]
-
-    # Проверяем, ожидаем ли мы промпт от пользователя
-    if not user_state.awaiting_prompt:
-        await message.reply(
-            "Пожалуйста, нажмите кнопку '🎨 Сгенерировать изображение' для начала:",
-            reply_markup=get_main_keyboard()
-        )
-        return
-
     try:
-        logger.info(f"Received text message: {message.text}")
+        user_id = message.from_user.id
         
-        if len(message.text) > Text2ImageAPI.MAX_PROMPT_LENGTH:
-            await message.reply(
-                f"⚠️ Ваш запрос слишком длинный ({len(message.text)} символов). "
-                f"Он будет сокращен до {Text2ImageAPI.MAX_PROMPT_LENGTH} символов."
-            )
+        if not user_states[user_id].awaiting_prompt:
+            logger.info(f"Получено сообщение без ожидания промпта", extra={'user_id': user_id})
+            return
+
+        prompt = message.text
+        logger.info(f"Получен промпт для генерации: {prompt}", extra={'user_id': user_id})
+
+        # Сбрасываем флаг ожидания промпта
+        user_states[user_id].awaiting_prompt = False
         
-        # Отправляем сообщение о начале генерации
-        progress_message = await message.reply(
-            "🎨 Начинаю генерацию изображения...",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[])
-        )
+        # Получаем настройки пользователя
+        settings = user_settings[user_id]
         
-        # Инициализируем API
-        api = Text2ImageAPI('https://api-key.fusionbrain.ai', FUSIONBRAIN_API_KEY, FUSIONBRAIN_SECRET_KEY)
+        processing_message = await message.answer("⏳ Генерирую изображение...")
         
         try:
+            # Инициализация API
+            api = Text2ImageAPI('https://api-key.fusionbrain.ai/', FUSIONBRAIN_API_KEY, FUSIONBRAIN_SECRET_KEY)
+            
+            # Получение модели
+            logger.info("Запрос списка моделей", extra={'user_id': user_id})
             models = api.get_model()
-            logger.info(f"Available models: {models}")
-            model_id = models[0]['id']
-        except Exception as e:
-            logger.error(f"Failed to get models: {str(e)}")
-            model_id = 4  # Используем известный ID модели Kandinsky 3.1
-        
-        # Запускаем генерацию с настройками пользователя
-        request_id = api.generate(
-            message.text,
-            model=model_id,
-            width=user_state.width,
-            height=user_state.height
-        )
-        logger.info(f"Generation started with request_id: {request_id}")
-        
-        # Сбрасываем флаг ожидания промпта
-        user_state.awaiting_prompt = False
-        
-        # Проверяем статус генерации
-        while True:
-            try:
-                status = api.check_generation(request_id)
-                logger.info(f"Generation status: {status}")
+            model_id = models[0]["id"]
+            
+            # Генерация изображения
+            logger.info("Отправка запроса на генерацию", extra={'user_id': user_id})
+            uuid = api.generate(prompt, model_id, width=settings.width, height=settings.height)
+            
+            # Ожидание результата
+            while True:
+                await asyncio.sleep(1)
+                status = api.check_generation(uuid)
                 
-                if status.get('status') == 'DONE':
-                    images = status.get('images', [])
-                    if images:
-                        # Сохраняем изображение в состоянии пользователя
-                        image_data = base64.b64decode(images[0])
-                        user_state.last_image = image_data
-                        image_id = str(uuid_lib.uuid4())
-                        user_state.last_image_id = image_id
-                        
-                        # Отправляем изображение
-                        photo = types.BufferedInputFile(image_data, filename='generated_image.png')
-                        await message.reply_photo(
-                            photo,
-                            caption="✨ Ваше изображение готово! Вы можете удалить фон или вернуться в главное меню:",
-                            reply_markup=get_image_keyboard(image_id)
-                        )
-                        await progress_message.delete()
-                        break
-                    else:
-                        await progress_message.edit_text(
-                            "❌ Изображение не было сгенерировано",
-                            reply_markup=get_main_keyboard()
-                        )
-                        break
-                elif status.get('status') == 'FAILED':
-                    await progress_message.edit_text(
-                        "❌ Произошла ошибка при генерации изображения",
-                        reply_markup=get_main_keyboard()
+                if status["status"] == "DONE":
+                    images = status["images"]
+                    
+                    if not images:
+                        raise CensorshipError("Контент не прошел модерацию")
+                    
+                    # Сохраняем изображение для возможности удаления фона
+                    image_data = base64.b64decode(images[0])
+                    user_states[user_id].last_image = image_data
+                    user_states[user_id].last_image_id = str(uuid_lib.uuid4())
+                    
+                    logger.info("Изображение успешно сгенерировано", extra={'user_id': user_id})
+                    
+                    # Отправляем изображение
+                    await message.answer_photo(
+                        types.BufferedInputFile(
+                            image_data,
+                            filename="generated_image.png"
+                        ),
+                        reply_markup=get_image_keyboard(user_states[user_id].last_image_id)
                     )
                     break
                 
-                await asyncio.sleep(1)
-                
-            except Exception as e:
-                logger.error(f"Error checking generation status: {str(e)}")
-                await progress_message.edit_text(
-                    "❌ Произошла ошибка при проверке статуса генерации",
-                    reply_markup=get_main_keyboard()
-                )
-                break
+                elif status["status"] == "FAILED":
+                    error_msg = status.get("error", "Неизвестная ошибка")
+                    logger.error(f"Ошибка генерации: {error_msg}", extra={'user_id': user_id})
+                    await message.answer(f"❌ Ошибка при генерации: {error_msg}")
+                    break
+        
+        except CensorshipError as e:
+            logger.warning(f"Ошибка цензуры: {str(e)}", extra={'user_id': user_id})
+            await message.answer(f"❌ {str(e)}")
+        except Exception as e:
+            logger.error(f"Неожиданная ошибка: {str(e)}", exc_info=True, extra={'user_id': user_id})
+            await message.answer("❌ Произошла ошибка при генерации изображения")
+        finally:
+            await processing_message.delete()
             
     except Exception as e:
-        logger.error(f"Error generating image: {str(e)}")
-        await message.reply(
-            "❌ Произошла ошибка при генерации изображения",
-            reply_markup=get_main_keyboard()
-        )
+        logger.error(f"Критическая ошибка: {str(e)}", exc_info=True, extra={'user_id': user_id})
+        await message.answer("❌ Произошла критическая ошибка")
+
+@dp.callback_query(lambda c: c.data.startswith(CallbackData.REMOVE_BG))
+async def process_remove_background(callback_query: CallbackQuery):
+    try:
+        user_id = callback_query.from_user.id
+        image_id = callback_query.data.replace(CallbackData.REMOVE_BG, "")
+        
+        logger.info(f"Запрос на удаление фона для изображения {image_id}", extra={'user_id': user_id})
+        
+        # Проверяем, есть ли сохраненное изображение
+        if (not user_states[user_id].last_image or 
+            user_states[user_id].last_image_id != image_id):
+            logger.warning("Изображение не найдено в кэше", extra={'user_id': user_id})
+            await callback_query.answer("❌ Изображение не найдено")
+            return
+        
+        # Отправляем сообщение о начале обработки
+        processing_message = await callback_query.message.answer("⏳ Удаляю фон...")
+        
+        try:
+            # Удаляем фон
+            image_without_bg = await ImageProcessor.remove_background(user_states[user_id].last_image)
+            
+            logger.info("Фон успешно удален", extra={'user_id': user_id})
+            
+            # Отправляем обработанное изображение
+            await callback_query.message.answer_photo(
+                types.BufferedInputFile(
+                    image_without_bg,
+                    filename="image_without_bg.png"
+                ),
+                caption="✨ Фон успешно удален!",
+                reply_markup=get_main_keyboard()
+            )
+            
+        except Exception as e:
+            logger.error(f"Ошибка при удалении фона: {str(e)}", exc_info=True, extra={'user_id': user_id})
+            await callback_query.message.answer("❌ Ошибка при удалении фона")
+            
+        finally:
+            await processing_message.delete()
+            
+    except Exception as e:
+        logger.error(f"Критическая ошибка при удалении фона: {str(e)}", exc_info=True, extra={'user_id': user_id})
+        await callback_query.message.answer("❌ Произошла критическая ошибка")
 
 def get_image_keyboard(image_id: str) -> InlineKeyboardMarkup:
     """Создает клавиатуру для изображения"""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="🎭 Удалить фон", callback_data=f"{CallbackData.REMOVE_BG}{image_id}"),
-            InlineKeyboardButton(text="🏠 В главное меню", callback_data=CallbackData.BACK)
-        ]
-    ])
+    keyboard = [
+        [InlineKeyboardButton(
+            text="🎭 Удалить фон",
+            callback_data=f"{CallbackData.REMOVE_BG}{image_id}"
+        )],
+        [InlineKeyboardButton(
+            text="◀️ Назад",
+            callback_data=CallbackData.BACK
+        )]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def get_main_keyboard() -> InlineKeyboardMarkup:
     """Создает основную клавиатуру с главным меню"""
@@ -429,58 +506,32 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
 
 def get_settings_keyboard() -> InlineKeyboardMarkup:
     """Создает клавиатуру с настройками размеров"""
-    keyboard = [
-        [InlineKeyboardButton(text=size_info["label"], callback_data=f"{CallbackData.SIZE_PREFIX}{size_key}")]
-        for size_key, size_info in IMAGE_SIZES.items()
-    ]
-    keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data=CallbackData.BACK)])
+    keyboard = []
+    
+    # Добавляем кнопки для каждого размера
+    for size_key, size_config in IMAGE_SIZES.items():
+        keyboard.append([
+            InlineKeyboardButton(
+                text=size_config["label"],
+                callback_data=f"{CallbackData.SIZE_PREFIX}{size_key}"
+            )
+        ])
+    
+    # Добавляем кнопку возврата
+    keyboard.append([
+        InlineKeyboardButton(
+            text="◀️ Назад",
+            callback_data=CallbackData.BACK
+        )
+    ])
+    
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-# Обработчик для удаления фона
-@dp.callback_query(lambda c: c.data.startswith(CallbackData.REMOVE_BG))
-async def process_remove_background(callback_query: CallbackQuery):
-    user_id = callback_query.from_user.id
-    user_state = user_states[user_id]
-    image_id = callback_query.data.replace(CallbackData.REMOVE_BG, '')
-    
-    # Проверяем, что это последнее сгенерированное изображение
-    if not user_state.last_image or user_state.last_image_id != image_id:
-        await callback_query.answer("❌ Изображение недоступно или устарело")
-        return
-
-    try:
-        # Отправляем сообщение о начале обработки
-        await callback_query.answer("🎭 Начинаю удаление фона...")
-        processing_message = await callback_query.message.reply(
-            "🎭 Удаляю фон с изображения...",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[])
-        )
-
-        # Удаляем фон
-        image_without_bg = await ImageProcessor.remove_background(user_state.last_image)
-        
-        # Сохраняем новое изображение
-        user_state.last_image = image_without_bg
-        new_image_id = str(uuid_lib.uuid4())
-        user_state.last_image_id = new_image_id
-
-        # Отправляем обработанное изображение
-        photo = types.BufferedInputFile(image_without_bg, filename='image_without_bg.png')
-        await callback_query.message.reply_photo(
-            photo,
-            caption="✨ Фон успешно удален!",
-            reply_markup=get_main_keyboard()
-        )
-        
-        # Удаляем сообщение о процессе
-        await processing_message.delete()
-        
-    except Exception as e:
-        logger.error(f"Error removing background: {str(e)}")
-        await callback_query.message.reply(
-            "❌ Произошла ошибка при удалении фона",
-            reply_markup=get_main_keyboard()
-        )
+def get_prompt_keyboard() -> InlineKeyboardMarkup:
+    """Создает клавиатуру для режима ввода промпта"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="◀️ Вернуться в меню", callback_data=CallbackData.BACK)]
+    ])
 
 async def main():
     # Запуск бота
