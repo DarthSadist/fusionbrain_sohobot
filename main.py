@@ -55,6 +55,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.exceptions import TelegramBadRequest
 import asyncio
+import aiohttp
 import io
 import uuid as uuid_lib
 from PIL import Image, ImageEnhance, ImageFilter
@@ -69,6 +70,29 @@ API_TOKEN = os.getenv('API_TOKEN')
 FUSIONBRAIN_API_KEY = os.getenv('FUSIONBRAIN_API_KEY')
 FUSIONBRAIN_SECRET_KEY = os.getenv('FUSIONBRAIN_SECRET_KEY')
 
+# Проверяем наличие всех необходимых переменных окружения
+if not all([API_TOKEN, FUSIONBRAIN_API_KEY, FUSIONBRAIN_SECRET_KEY]):
+    logger.error("Не все необходимые переменные окружения установлены!")
+    if not API_TOKEN:
+        logger.error("Отсутствует API_TOKEN")
+    if not FUSIONBRAIN_API_KEY:
+        logger.error("Отсутствует FUSIONBRAIN_API_KEY")
+    if not FUSIONBRAIN_SECRET_KEY:
+        logger.error("Отсутствует FUSIONBRAIN_SECRET_KEY")
+    sys.exit(1)
+
+# Проверяем формат ключей
+if any([' ' in key for key in [FUSIONBRAIN_API_KEY, FUSIONBRAIN_SECRET_KEY]]):
+    logger.error("API ключи не должны содержать пробелов!")
+    sys.exit(1)
+
+if any(['"' in key or "'" in key for key in [FUSIONBRAIN_API_KEY, FUSIONBRAIN_SECRET_KEY]]):
+    logger.error("API ключи не должны содержать кавычек!")
+    sys.exit(1)
+
+logger.info("Конфигурация загружена успешно")
+logger.debug(f"API Key length: {len(FUSIONBRAIN_API_KEY)}, Secret Key length: {len(FUSIONBRAIN_SECRET_KEY)}")
+
 START_IMAGE_URL = 'https://ваша ссылка на картинку'
 
 # Инициализация бота и диспетчера
@@ -79,14 +103,50 @@ class CensorshipError(Exception):
     pass
 
 class Text2ImageAPI:
-    MAX_PROMPT_LENGTH = 500  # Максимальная длина промпта
+    MAX_PROMPT_LENGTH = 500
 
-    def __init__(self, url, api_key, secret_key):
-        self.URL = url
-        self.AUTH_HEADERS = {
-            'X-Key': f'Key {api_key}',
-            'X-Secret': f'Secret {secret_key}'
+    def __init__(self, api_key, secret_key):
+        self.URL = 'https://api-key.fusionbrain.ai'
+        self.api_key = api_key
+        self.secret_key = secret_key
+
+    async def _make_request(self, method, url, **kwargs):
+        """Выполняет запрос к API с правильной авторизацией"""
+        headers = {
+            'X-Key': f'Key {self.api_key}',
+            'X-Secret': f'Secret {self.secret_key}'
         }
+        
+        if 'headers' in kwargs:
+            headers.update(kwargs.pop('headers'))
+        
+        if 'json' in kwargs:
+            headers['Content-Type'] = 'application/json'
+        
+        logger.info(
+            f"Making API request: method={method}, url={url}",
+            extra={
+                'headers': {k: v for k, v in headers.items() if not k.lower().startswith('x-')},
+                'method': method
+            }
+        )
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.request(method, url, headers=headers, **kwargs) as response:
+                text = await response.text()
+                logger.info(
+                    f"API Response: url={url}, status={response.status}, response={text}",
+                    extra={'method': method, 'status': response.status}
+                )
+                
+                # Проверяем успешность ответа
+                if response.status not in [200, 201]:
+                    raise Exception(f'API request failed ({response.status}): {text}')
+                
+                try:
+                    return await response.json() if text else None
+                except json.JSONDecodeError as e:
+                    raise Exception(f'Failed to parse JSON response: {text}') from e
 
     def _prepare_prompt(self, prompt):
         """Подготовка промпта: обрезка до максимальной длины"""
@@ -95,63 +155,64 @@ class Text2ImageAPI:
             return prompt[:self.MAX_PROMPT_LENGTH] + "..."
         return prompt
 
-    def get_model(self):
-        response = requests.get(f'{self.URL}/key/api/v1/models', headers=self.AUTH_HEADERS)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            raise Exception(f'Failed to get models: {response.text}')
+    async def get_model(self):
+        """Получение списка доступных моделей"""
+        return await self._make_request('GET', f'{self.URL}/key/api/v1/models', json={})
 
-    def generate(self, prompt, model, images=1, width=1024, height=1024, reference_image=None):
-        url = f'{self.URL}/key/api/v1/text2image/run'
-        logger.info(f"Sending request to: {url}")
-        
-        # Подготавливаем промпт
-        prepared_prompt = self._prepare_prompt(prompt)
-        
-        # Создаем параметры запроса
-        params_json = {
+    async def generate(self, prompt, model_id, width=1024, height=1024):
+        """Запуск генерации изображения"""
+        params = {
             "type": "GENERATE",
-            "numImages": images,
+            "numImages": 1,
             "width": width,
             "height": height,
             "generateParams": {
-                "query": prepared_prompt
+                "query": self._prepare_prompt(prompt)
             }
         }
         
-        if reference_image:
-            params_json["generateParams"]["reference_image"] = reference_image
+        # Создаем форму для отправки файлов
+        form = aiohttp.FormData()
+        form.add_field('model_id', str(model_id))
+        form.add_field('params', json.dumps(params), content_type='application/json')
         
-        # Создаем multipart/form-data
-        files = {
-            'model_id': (None, str(model)),
-            'params': (None, json.dumps(params_json), 'application/json')
-        }
+        result = await self._make_request(
+            'POST',
+            f'{self.URL}/key/api/v1/text2image/run',
+            data=form
+        )
         
-        logger.info(f"Request files: {files}")
-        logger.info(f"Request params: {params_json}")
-        logger.info(f"Request headers: {self.AUTH_HEADERS}")
-        
-        response = requests.post(url, headers=self.AUTH_HEADERS, files=files)
-        logger.info(f"Response status: {response.status_code}")
-        logger.info(f"Response headers: {dict(response.headers)}")
-        logger.info(f"Response text: {response.text}")
-        
-        if response.status_code in [200, 201]:
-            data = response.json()
-            return data.get('uuid')
-        else:
-            raise Exception(f'Failed to generate: {response.text}')
+        uuid = result.get('uuid')
+        if not uuid:
+            raise Exception('Failed to get UUID from response')
+            
+        logger.info(f"Generation started with UUID: {uuid}")
+        return uuid
 
-    def check_generation(self, request_id):
-        response = requests.get(f'{self.URL}/key/api/v1/text2image/status/{request_id}', headers=self.AUTH_HEADERS)
-        logger.info(f"Check status response: {response.text}")
-        if response.status_code == 200:
-            data = response.json()
-            return data
+    async def check_generation(self, uuid):
+        """Проверка статуса генерации"""
+        result = await self._make_request(
+            'GET',
+            f'{self.URL}/key/api/v1/text2image/status/{uuid}',
+            json={}
+        )
+        
+        status = result.get('status')
+        if not status:
+            raise Exception('No status in response')
+            
+        logger.info(f"Generation status: {status}", extra={'uuid': uuid})
+        
+        if status == 'DONE':
+            images = result.get('images', [])
+            if not images:
+                raise CensorshipError("Контент не прошел модерацию")
+            return base64.b64decode(images[0])
+        elif status == 'FAILED':
+            error = result.get('error', 'Unknown error')
+            raise Exception(f'Generation failed: {error}')
         else:
-            raise Exception(f'Failed to check generation: {response.text}')
+            raise Exception('Generation still in progress')
 
 # Константы для эмодзи
 class Emoji:
@@ -273,30 +334,75 @@ IMAGE_SIZES = {
 
 # Доступные стили изображений
 IMAGE_STYLES = {
-    "realistic": {
-        "label": "📸 Фотореалистичный",
-        "description": "Максимально реалистичные изображения",
-        "prompt_prefix": "photorealistic, highly detailed, 8k uhd, high quality"
+    "DEFAULT": {
+        "label": "Обычный",
+        "prompt_prefix": "",
+        "description": "Стандартный стиль без дополнительных модификаций"
     },
-    "anime": {
-        "label": "🎨 Аниме",
-        "description": "В стиле японской анимации",
-        "prompt_prefix": "anime style, manga, detailed anime illustration"
+    "ANIME": {
+        "label": "Аниме",
+        "prompt_prefix": "anime style, anime art, ",
+        "description": "Стиль японской анимации"
     },
-    "oil": {
-        "label": "🖼 Масляная живопись",
-        "description": "Классическая масляная живопись",
-        "prompt_prefix": "oil painting, detailed brushstrokes, canvas texture, artistic"
+    "REALISTIC": {
+        "label": "Реалистичный",
+        "prompt_prefix": "realistic, photorealistic, hyperrealistic, ",
+        "description": "Максимально реалистичное изображение"
     },
-    "watercolor": {
-        "label": "💦 Акварель",
-        "description": "Нежная акварельная техника",
-        "prompt_prefix": "watercolor painting, soft colors, watercolor paper texture"
+    "PORTRAIT": {
+        "label": "Портрет",
+        "prompt_prefix": "portrait style, professional portrait, ",
+        "description": "Профессиональный портретный стиль"
     },
-    "digital": {
-        "label": "💻 Цифровое искусство",
-        "description": "Современное цифровое искусство",
-        "prompt_prefix": "digital art, concept art, highly detailed digital illustration"
+    "STUDIO_GHIBLI": {
+        "label": "Студия Гибли",
+        "prompt_prefix": "studio ghibli style, ghibli anime, ",
+        "description": "В стиле анимационных фильмов Студии Гибли"
+    },
+    "CYBERPUNK": {
+        "label": "Киберпанк",
+        "prompt_prefix": "cyberpunk style, neon, futuristic, ",
+        "description": "Футуристический стиль киберпанка"
+    },
+    "WATERCOLOR": {
+        "label": "Акварель",
+        "prompt_prefix": "watercolor painting, watercolor art style, ",
+        "description": "Акварельная живопись"
+    },
+    "OIL_PAINTING": {
+        "label": "Масло",
+        "prompt_prefix": "oil painting style, classical art, ",
+        "description": "Классическая масляная живопись"
+    },
+    "PENCIL_DRAWING": {
+        "label": "Карандаш",
+        "prompt_prefix": "pencil drawing, sketch style, ",
+        "description": "Карандашный рисунок"
+    },
+    "DIGITAL_ART": {
+        "label": "Цифровое искусство",
+        "prompt_prefix": "digital art, digital painting, ",
+        "description": "Современное цифровое искусство"
+    },
+    "POP_ART": {
+        "label": "Поп-арт",
+        "prompt_prefix": "pop art style, vibrant colors, ",
+        "description": "Яркий стиль поп-арт"
+    },
+    "STEAMPUNK": {
+        "label": "Стимпанк",
+        "prompt_prefix": "steampunk style, victorian sci-fi, ",
+        "description": "Викторианский научно-фантастический стиль"
+    },
+    "MINIMALIST": {
+        "label": "Минимализм",
+        "prompt_prefix": "minimalist style, simple, clean, ",
+        "description": "Минималистичный стиль"
+    },
+    "FANTASY": {
+        "label": "Фэнтези",
+        "prompt_prefix": "fantasy art style, magical, mystical, ",
+        "description": "Фэнтезийный стиль"
     }
 }
 
@@ -314,7 +420,7 @@ class UserSettings:
     def __init__(self):
         self.width = 1024
         self.height = 1024
-        self.style = "realistic"  # Стиль по умолчанию
+        self.style = "DEFAULT"  # Стиль по умолчанию
 
 user_states = defaultdict(UserState)
 user_settings = defaultdict(UserSettings)
@@ -504,93 +610,173 @@ async def back_to_main(callback_query: CallbackQuery):
 
 @dp.message()
 async def generate_image(message: types.Message):
+    """Генерирует изображение на основе промпта"""
     try:
         user_id = message.from_user.id
         
         if not user_states[user_id].awaiting_prompt:
-            logger.info(f"Получено сообщение без ожидания промпта", extra={'user_id': user_id})
             return
-
-        prompt = message.text
-        logger.info(f"Получен промпт для генерации: {prompt}", extra={'user_id': user_id})
-
-        # Сбрасываем флаг ожидания промпта
+        
         user_states[user_id].awaiting_prompt = False
         
         # Получаем настройки пользователя
         settings = user_settings[user_id]
+        style_info = IMAGE_STYLES[settings.style]
         
-        # Получаем стиль и добавляем его к промпту
-        style_config = IMAGE_STYLES[settings.style]
-        full_prompt = f"{style_config['prompt_prefix']}, {prompt}"
+        # Формируем промпт с учетом стиля
+        prompt = f"{style_info['prompt_prefix']}{message.text}"
         
-        processing_message = await message.answer(Messages.GENERATING)
+        logger.info(f"Начало генерации изображения", extra={
+            'user_id': user_id,
+            'prompt': prompt,
+            'style': settings.style,
+            'size': f"{settings.width}x{settings.height}"
+        })
+        
+        # Отправляем сообщение о начале генерации
+        status_message = await message.answer(
+            Messages.GENERATING,
+            reply_markup=None
+        )
         
         try:
-            # Инициализация API
-            api = Text2ImageAPI('https://api-key.fusionbrain.ai/', FUSIONBRAIN_API_KEY, FUSIONBRAIN_SECRET_KEY)
+            # Создаем экземпляр API
+            api = Text2ImageAPI(
+                api_key=FUSIONBRAIN_API_KEY,
+                secret_key=FUSIONBRAIN_SECRET_KEY
+            )
             
-            # Получение модели
-            logger.info("Запрос списка моделей", extra={'user_id': user_id})
-            models = api.get_model()
+            logger.info("Получение списка моделей", extra={'user_id': user_id})
+            
+            # Получаем модель
+            models = await api.get_model()
+            if not models:
+                raise Exception("Нет доступных моделей")
             model_id = models[0]["id"]
             
-            # Подготовка параметров генерации
-            params = {
-                "width": settings.width,
-                "height": settings.height
-            }
+            logger.info(f"Используется модель: {model_id}", extra={'user_id': user_id})
             
-            # Генерация изображения
-            logger.info("Отправка запроса на генерацию", extra={'user_id': user_id})
-            uuid = api.generate(full_prompt, model_id, **params)
+            # Генерируем изображение
+            logger.info("Запуск генерации", extra={'user_id': user_id})
             
-            # Ожидание результата
-            while True:
-                await asyncio.sleep(1)
-                status = api.check_generation(uuid)
-                
-                if status["status"] == "DONE":
-                    images = status["images"]
-                    
-                    if not images:
-                        raise CensorshipError("Контент не прошел модерацию")
-                    
-                    # Сохраняем изображение для возможности удаления фона
-                    image_data = base64.b64decode(images[0])
-                    user_states[user_id].last_image = image_data
-                    user_states[user_id].last_image_id = str(uuid_lib.uuid4())
-                    
-                    logger.info("Изображение успешно сгенерировано", extra={'user_id': user_id})
-                    
-                    # Отправляем изображение
-                    await message.answer_photo(
-                        types.BufferedInputFile(
-                            image_data,
-                            filename="generated_image.png"
-                        ),
-                        reply_markup=get_image_keyboard(user_states[user_id].last_image_id)
-                    )
+            uuid = await api.generate(
+                prompt=prompt,
+                model_id=model_id,
+                width=settings.width,
+                height=settings.height
+            )
+            
+            logger.info(f"Получен UUID: {uuid}", extra={'user_id': user_id})
+            
+            # Ждем завершения генерации
+            retries = 0
+            max_retries = 60  # Максимальное время ожидания - 60 секунд
+            
+            while retries < max_retries:
+                try:
+                    logger.info(f"Проверка статуса генерации (попытка {retries + 1})", extra={'user_id': user_id})
+                    image_data = await api.check_generation(uuid)
                     break
-                
-                elif status["status"] == "FAILED":
-                    error_msg = status.get("error", "Неизвестная ошибка")
-                    logger.error(f"Ошибка генерации: {error_msg}", extra={'user_id': user_id})
-                    await message.answer(Messages.ERROR_GEN.format(error=error_msg))
-                    break
-        
-        except CensorshipError as e:
-            logger.warning(f"Ошибка цензуры: {str(e)}", extra={'user_id': user_id})
-            await message.answer(str(e))
+                except Exception as e:
+                    if "still in progress" not in str(e):
+                        logger.error(f"Ошибка при проверке статуса: {str(e)}", extra={'user_id': user_id})
+                        raise
+                    logger.info("Генерация все еще выполняется", extra={'user_id': user_id})
+                    await asyncio.sleep(1)
+                    retries += 1
+            
+            if retries >= max_retries:
+                raise Exception("Превышено время ожидания генерации")
+            
+            # Сохраняем изображение
+            image_id = str(uuid_lib.uuid4())
+            user_states[user_id].last_image = image_data
+            user_states[user_id].last_image_id = image_id
+            
+            logger.info("Отправка изображения пользователю", extra={'user_id': user_id})
+            
+            # Отправляем изображение
+            await message.answer_photo(
+                photo=types.BufferedInputFile(
+                    image_data,
+                    filename="generated_image.png"
+                ),
+                caption=(
+                    f"🎨 Стиль: <b>{style_info['label']}</b>\n"
+                    f"📏 Размер: <b>{settings.width}x{settings.height}</b>\n"
+                    f"💭 Промпт: <i>{message.text}</i>"
+                ),
+                reply_markup=get_image_keyboard(image_id),
+                parse_mode=ParseMode.HTML
+            )
+            
+            logger.info(
+                f"Изображение успешно сгенерировано и отправлено",
+                extra={
+                    'user_id': user_id,
+                    'prompt': prompt,
+                    'style': settings.style,
+                    'size': f"{settings.width}x{settings.height}"
+                }
+            )
+            
         except Exception as e:
-            logger.error(f"Неожиданная ошибка: {str(e)}", exc_info=True, extra={'user_id': user_id})
-            await message.answer(Messages.ERROR_CRITICAL)
-        finally:
-            await processing_message.delete()
+            error_message = str(e)
+            if "html" in error_message.lower():
+                error_message = "Ошибка соединения с сервером"
+            elif "401" in error_message:
+                error_message = "Ошибка авторизации. Проверьте API ключи"
+            elif "415" in error_message:
+                error_message = "Ошибка формата данных"
+            elif "429" in error_message:
+                error_message = "Слишком много запросов. Попробуйте позже"
+            elif "500" in error_message:
+                error_message = "Ошибка сервера. Попробуйте позже"
+            elif "503" in error_message:
+                error_message = "Сервис временно недоступен"
+            elif "timeout" in error_message.lower():
+                error_message = "Превышено время ожидания ответа"
             
+            logger.error(
+                f"Ошибка при генерации: {error_message}",
+                exc_info=True,
+                extra={
+                    'user_id': user_id,
+                    'prompt': prompt,
+                    'error': error_message
+                }
+            )
+            
+            await message.answer(
+                Messages.ERROR_GEN.format(error=error_message),
+                reply_markup=get_main_keyboard()
+            )
+        
+        finally:
+            # Удаляем сообщение о генерации
+            try:
+                await status_message.delete()
+            except Exception:
+                pass
+        
     except Exception as e:
-        logger.error(f"Критическая ошибка: {str(e)}", exc_info=True, extra={'user_id': user_id})
-        await message.answer(Messages.ERROR_CRITICAL)
+        error_message = str(e)
+        if "html" in error_message.lower():
+            error_message = "Ошибка соединения с сервером"
+            
+        logger.error(
+            f"Критическая ошибка в generate_image: {error_message}",
+            exc_info=True,
+            extra={'user_id': user_id}
+        )
+        
+        try:
+            await message.answer(
+                Messages.ERROR_CRITICAL,
+                reply_markup=get_main_keyboard()
+            )
+        except Exception:
+            pass
 
 @dp.callback_query(lambda c: c.data.startswith(CallbackData.REMOVE_BG))
 async def process_remove_background(callback_query: CallbackQuery):
@@ -618,7 +804,7 @@ async def process_remove_background(callback_query: CallbackQuery):
             
             # Отправляем обработанное изображение
             await callback_query.message.answer_photo(
-                types.BufferedInputFile(
+                photo=types.BufferedInputFile(
                     image_without_bg,
                     filename="image_without_bg.png"
                 ),
@@ -654,42 +840,47 @@ async def show_styles(callback_query: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data.startswith(CallbackData.STYLE_PREFIX))
 async def process_style_change(callback_query: CallbackQuery):
+    """Обрабатывает выбор стиля изображения"""
     try:
-        user_id = callback_query.from_user.id
-        style_key = callback_query.data.replace(CallbackData.STYLE_PREFIX, "")
+        # Получаем ID стиля из callback_data
+        style_id = callback_query.data[len(CallbackData.STYLE_PREFIX):]
         
-        if style_key not in IMAGE_STYLES:
-            logger.error(f"Неверный ключ стиля: {style_key}", extra={'user_id': user_id})
-            await callback_query.answer("❌ Ошибка: неверный стиль")
+        # Проверяем, существует ли такой стиль
+        if style_id not in IMAGE_STYLES:
+            await callback_query.answer("Ошибка: неверный стиль", show_alert=True)
             return
-            
-        user_settings[user_id].style = style_key
-        style_config = IMAGE_STYLES[style_key]
         
-        logger.info(f"Пользователь изменил стиль на {style_config['label']}", extra={'user_id': user_id})
+        # Получаем информацию о стиле
+        style_info = IMAGE_STYLES[style_id]
         
-        if user_states[user_id].awaiting_prompt:
-            # Если ожидаем промпт, показываем обновленные настройки
-            await update_message(
-                callback_query.message,
-                Messages.CURRENT_SETTINGS.format(
-                    style=style_config['label'],
-                    size=f"{user_settings[user_id].width}x{user_settings[user_id].height}"
-                ),
-                get_prompt_keyboard()
-            )
-        else:
-            # Иначе показываем сообщение об изменении стиля
-            await update_message(
-                callback_query.message,
-                Messages.STYLE_CHANGED.format(style=style_config['label']),
-                get_main_keyboard()
-            )
+        # Сохраняем выбранный стиль в настройках пользователя
+        user_settings[callback_query.from_user.id].style = style_id
+        
+        # Формируем текст сообщения с описанием стиля
+        message_text = (
+            f"{Emoji.SUCCESS} Выбран стиль: <b>{style_info['label']}</b>\n"
+            f"\n"
+            f"<i>{style_info['description']}</i>"
+        )
+        
+        # Обновляем сообщение
+        await callback_query.message.edit_text(
+            text=message_text,
+            reply_markup=get_prompt_keyboard(),
+            parse_mode=ParseMode.HTML
+        )
+        
+        # Устанавливаем флаг ожидания промпта
+        user_states[callback_query.from_user.id].awaiting_prompt = True
+        
         await callback_query.answer()
         
     except Exception as e:
-        logger.error(f"Ошибка при изменении стиля: {str(e)}", exc_info=True, extra={'user_id': user_id})
-        await callback_query.answer("❌ Произошла ошибка")
+        logger.error(f"Error in process_style_change: {e}", exc_info=True)
+        await callback_query.answer(
+            Messages.ERROR_CRITICAL,
+            show_alert=True
+        )
 
 def get_image_keyboard(image_id: str) -> InlineKeyboardMarkup:
     """Создает клавиатуру для изображения"""
@@ -745,19 +936,27 @@ def get_styles_keyboard() -> InlineKeyboardMarkup:
     """Создает клавиатуру с выбором стилей"""
     keyboard = []
     
-    # Добавляем кнопки для каждого стиля
-    for style_key, style_config in IMAGE_STYLES.items():
-        keyboard.append([
-            InlineKeyboardButton(
-                text=f"{style_config['label']} - {style_config['description']}",
-                callback_data=f"{CallbackData.STYLE_PREFIX}{style_key}"
-            )
-        ])
+    # Создаем кнопки для каждого стиля, по 2 в ряд
+    current_row = []
+    for style_id, style_info in IMAGE_STYLES.items():
+        button = InlineKeyboardButton(
+            text=style_info["label"],
+            callback_data=f"{CallbackData.STYLE_PREFIX}{style_id}"
+        )
+        current_row.append(button)
+        
+        if len(current_row) == 2:
+            keyboard.append(current_row)
+            current_row = []
     
-    # Добавляем кнопку возврата
+    # Добавляем оставшиеся кнопки, если есть
+    if current_row:
+        keyboard.append(current_row)
+    
+    # Добавляем кнопку "Назад"
     keyboard.append([
         InlineKeyboardButton(
-            text=f"{Emoji.BACK} В главное меню",
+            text=f"{Emoji.BACK} Назад",
             callback_data=CallbackData.BACK
         )
     ])
