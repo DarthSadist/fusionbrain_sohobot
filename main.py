@@ -102,7 +102,7 @@ class Text2ImageAPI:
         else:
             raise Exception(f'Failed to get models: {response.text}')
 
-    def generate(self, prompt, model, images=1, width=1024, height=1024):
+    def generate(self, prompt, model, images=1, width=1024, height=1024, reference_image=None):
         url = f'{self.URL}/key/api/v1/text2image/run'
         logger.info(f"Sending request to: {url}")
         
@@ -119,6 +119,9 @@ class Text2ImageAPI:
                 "query": prepared_prompt
             }
         }
+        
+        if reference_image:
+            params_json["generateParams"]["reference_image"] = reference_image
         
         # Создаем multipart/form-data
         files = {
@@ -171,6 +174,7 @@ class Messages:
 • Создавать изображения по текстовому описанию
 • Удалять фон с готовых изображений
 • Создавать изображения разных размеров
+• Генерировать изображения в разных стилях
 
 Нажмите кнопку {Emoji.CREATE} <b>Создать</b>, чтобы начать!
 """
@@ -179,13 +183,14 @@ class Messages:
 {Emoji.CREATE} <b>Как использовать бота:</b>
 
 1. Нажмите кнопку {Emoji.CREATE} <b>Создать</b>
-2. Опишите желаемое изображение
-3. Дождитесь результата
-4. Используйте кнопку {Emoji.REMOVE_BG} для удаления фона
+2. Выберите желаемый стиль изображения
+3. Опишите желаемое изображение
+4. Дождитесь результата
+5. Используйте кнопку {Emoji.REMOVE_BG} для удаления фона
 
 {Emoji.SETTINGS} <b>Настройки:</b>
 • Выберите размер будущего изображения
-• Доступны квадратные, широкие и вертикальные форматы
+• Выберите стиль изображения
 """
     
     SETTINGS = f"""{Emoji.SETTINGS} <b>Текущие настройки</b>
@@ -194,10 +199,29 @@ class Messages:
 
 Выберите новый размер:"""
     
+    STYLES = f"""{Emoji.SETTINGS} <b>Выберите стиль изображения</b>
+
+Текущий стиль: <b>{{style_label}}</b>
+
+Выберите новый стиль:"""
+    
+    STYLE_CHANGED = f"{Emoji.SUCCESS} Установлен стиль: <b>{{style}}</b>"
+    
+    CURRENT_SETTINGS = f"""{Emoji.SETTINGS} <b>Текущие настройки</b>
+
+Стиль: <b>{{style}}</b>
+Размер: <b>{{size}}</b>
+
+{Emoji.EDIT} Теперь опишите желаемое изображение или измените настройки:"""
+    
     PROMPT = f"""{Emoji.EDIT} <b>Опишите изображение</b>
 
 Напишите, что бы вы хотели увидеть на изображении. 
 Чем подробнее описание, тем лучше результат!
+
+Текущие настройки:
+• Стиль: <b>{{style}}</b>
+• Размер: <b>{{size}}</b>
 
 Примеры:
 • "Космический корабль в стиле киберпанк"
@@ -222,6 +246,8 @@ class CallbackData:
     HELP = "help"
     BACK = "back_to_main"
     REMOVE_BG = "remove_bg"
+    STYLES = "styles"  # Новый callback для меню стилей
+    STYLE_PREFIX = "style_"  # Префикс для выбора стиля
 
 # Доступные размеры изображений
 IMAGE_SIZES = {
@@ -245,6 +271,35 @@ IMAGE_SIZES = {
     }
 }
 
+# Доступные стили изображений
+IMAGE_STYLES = {
+    "realistic": {
+        "label": "📸 Фотореалистичный",
+        "description": "Максимально реалистичные изображения",
+        "prompt_prefix": "photorealistic, highly detailed, 8k uhd, high quality"
+    },
+    "anime": {
+        "label": "🎨 Аниме",
+        "description": "В стиле японской анимации",
+        "prompt_prefix": "anime style, manga, detailed anime illustration"
+    },
+    "oil": {
+        "label": "🖼 Масляная живопись",
+        "description": "Классическая масляная живопись",
+        "prompt_prefix": "oil painting, detailed brushstrokes, canvas texture, artistic"
+    },
+    "watercolor": {
+        "label": "💦 Акварель",
+        "description": "Нежная акварельная техника",
+        "prompt_prefix": "watercolor painting, soft colors, watercolor paper texture"
+    },
+    "digital": {
+        "label": "💻 Цифровое искусство",
+        "description": "Современное цифровое искусство",
+        "prompt_prefix": "digital art, concept art, highly detailed digital illustration"
+    }
+}
+
 # Состояния пользователя
 class UserState:
     def __init__(self):
@@ -254,14 +309,14 @@ class UserState:
         self.last_image = None  # Хранение последнего сгенерированного изображения
         self.last_image_id = None  # ID последнего изображения для callback
 
-user_states = defaultdict(UserState)
-
 # Словарь для хранения пользовательских настроек
 class UserSettings:
     def __init__(self):
         self.width = 1024
         self.height = 1024
+        self.style = "realistic"  # Стиль по умолчанию
 
+user_states = defaultdict(UserState)
 user_settings = defaultdict(UserSettings)
 
 # Добавляем класс для работы с изображениями
@@ -396,11 +451,23 @@ async def process_size_change(callback_query: CallbackQuery):
         
         logger.info(f"Пользователь изменил размер изображения на {size_config['label']}", extra={'user_id': user_id})
         
-        await update_message(
-            callback_query.message,
-            Messages.SIZE_CHANGED.format(size=size_config['label']),
-            get_main_keyboard()
-        )
+        if user_states[user_id].awaiting_prompt:
+            # Если ожидаем промпт, показываем обновленные настройки
+            await update_message(
+                callback_query.message,
+                Messages.CURRENT_SETTINGS.format(
+                    style=IMAGE_STYLES[user_settings[user_id].style]["label"],
+                    size=size_config['label']
+                ),
+                get_prompt_keyboard()
+            )
+        else:
+            # Иначе показываем сообщение об изменении размера
+            await update_message(
+                callback_query.message,
+                Messages.SIZE_CHANGED.format(size=size_config['label']),
+                get_main_keyboard()
+            )
         await callback_query.answer()
         
     except Exception as e:
@@ -411,11 +478,17 @@ async def process_size_change(callback_query: CallbackQuery):
 async def start_generation(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     user_states[user_id].awaiting_prompt = True
+    settings = user_settings[user_id]
+    
     logger.info(f"Пользователь начал процесс генерации", extra={'user_id': user_id})
     
+    # Показываем текущие настройки и запрашиваем промпт
     await update_message(
         callback_query.message,
-        Messages.PROMPT,
+        Messages.CURRENT_SETTINGS.format(
+            style=IMAGE_STYLES[settings.style]["label"],
+            size=f"{settings.width}x{settings.height}"
+        ),
         get_prompt_keyboard()
     )
     await callback_query.answer()
@@ -447,6 +520,10 @@ async def generate_image(message: types.Message):
         # Получаем настройки пользователя
         settings = user_settings[user_id]
         
+        # Получаем стиль и добавляем его к промпту
+        style_config = IMAGE_STYLES[settings.style]
+        full_prompt = f"{style_config['prompt_prefix']}, {prompt}"
+        
         processing_message = await message.answer(Messages.GENERATING)
         
         try:
@@ -458,9 +535,15 @@ async def generate_image(message: types.Message):
             models = api.get_model()
             model_id = models[0]["id"]
             
+            # Подготовка параметров генерации
+            params = {
+                "width": settings.width,
+                "height": settings.height
+            }
+            
             # Генерация изображения
             logger.info("Отправка запроса на генерацию", extra={'user_id': user_id})
-            uuid = api.generate(prompt, model_id, width=settings.width, height=settings.height)
+            uuid = api.generate(full_prompt, model_id, **params)
             
             # Ожидание результата
             while True:
@@ -554,6 +637,60 @@ async def process_remove_background(callback_query: CallbackQuery):
         logger.error(f"Критическая ошибка при удалении фона: {str(e)}", exc_info=True, extra={'user_id': user_id})
         await callback_query.message.answer(Messages.ERROR_CRITICAL)
 
+@dp.callback_query(lambda c: c.data == CallbackData.STYLES)
+async def show_styles(callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    current_style = user_settings[user_id].style
+    style_label = IMAGE_STYLES[current_style]["label"]
+    
+    logger.info(f"Пользователь открыл меню стилей", extra={'user_id': user_id})
+    
+    await update_message(
+        callback_query.message,
+        Messages.STYLES.format(style_label=style_label),
+        get_styles_keyboard()
+    )
+    await callback_query.answer()
+
+@dp.callback_query(lambda c: c.data.startswith(CallbackData.STYLE_PREFIX))
+async def process_style_change(callback_query: CallbackQuery):
+    try:
+        user_id = callback_query.from_user.id
+        style_key = callback_query.data.replace(CallbackData.STYLE_PREFIX, "")
+        
+        if style_key not in IMAGE_STYLES:
+            logger.error(f"Неверный ключ стиля: {style_key}", extra={'user_id': user_id})
+            await callback_query.answer("❌ Ошибка: неверный стиль")
+            return
+            
+        user_settings[user_id].style = style_key
+        style_config = IMAGE_STYLES[style_key]
+        
+        logger.info(f"Пользователь изменил стиль на {style_config['label']}", extra={'user_id': user_id})
+        
+        if user_states[user_id].awaiting_prompt:
+            # Если ожидаем промпт, показываем обновленные настройки
+            await update_message(
+                callback_query.message,
+                Messages.CURRENT_SETTINGS.format(
+                    style=style_config['label'],
+                    size=f"{user_settings[user_id].width}x{user_settings[user_id].height}"
+                ),
+                get_prompt_keyboard()
+            )
+        else:
+            # Иначе показываем сообщение об изменении стиля
+            await update_message(
+                callback_query.message,
+                Messages.STYLE_CHANGED.format(style=style_config['label']),
+                get_main_keyboard()
+            )
+        await callback_query.answer()
+        
+    except Exception as e:
+        logger.error(f"Ошибка при изменении стиля: {str(e)}", exc_info=True, extra={'user_id': user_id})
+        await callback_query.answer("❌ Произошла ошибка")
+
 def get_image_keyboard(image_id: str) -> InlineKeyboardMarkup:
     """Создает клавиатуру для изображения"""
     keyboard = [
@@ -576,6 +713,7 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
     """Создает основную клавиатуру с главным меню"""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"{Emoji.CREATE} Создать", callback_data=CallbackData.GENERATE)],
+        [InlineKeyboardButton(text=f"{Emoji.SETTINGS} Стили", callback_data=CallbackData.STYLES)],
         [InlineKeyboardButton(text=f"{Emoji.SETTINGS} Настройки", callback_data=CallbackData.SETTINGS)],
         [InlineKeyboardButton(text=f"{Emoji.HELP} Помощь", callback_data=CallbackData.HELP)]
     ])
@@ -603,8 +741,39 @@ def get_settings_keyboard() -> InlineKeyboardMarkup:
     
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
+def get_styles_keyboard() -> InlineKeyboardMarkup:
+    """Создает клавиатуру с выбором стилей"""
+    keyboard = []
+    
+    # Добавляем кнопки для каждого стиля
+    for style_key, style_config in IMAGE_STYLES.items():
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"{style_config['label']} - {style_config['description']}",
+                callback_data=f"{CallbackData.STYLE_PREFIX}{style_key}"
+            )
+        ])
+    
+    # Добавляем кнопку возврата
+    keyboard.append([
+        InlineKeyboardButton(
+            text=f"{Emoji.BACK} В главное меню",
+            callback_data=CallbackData.BACK
+        )
+    ])
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
 def get_prompt_keyboard() -> InlineKeyboardMarkup:
     """Создает клавиатуру для режима ввода промпта"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"{Emoji.SETTINGS} Стиль", callback_data=CallbackData.STYLES)],
+        [InlineKeyboardButton(text=f"{Emoji.SETTINGS} Размер", callback_data=CallbackData.SETTINGS)],
+        [InlineKeyboardButton(text=f"{Emoji.BACK} В главное меню", callback_data=CallbackData.BACK)]
+    ])
+
+def get_back_keyboard() -> InlineKeyboardMarkup:
+    """Создает клавиатуру для возврата"""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"{Emoji.BACK} В главное меню", callback_data=CallbackData.BACK)]
     ])
