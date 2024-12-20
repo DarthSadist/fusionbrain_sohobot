@@ -264,26 +264,74 @@ class Text2ImageAPI:
 
     async def check_generation(self, uuid: str) -> dict:
         """Проверка статуса генерации"""
-        url = f"{self.URL}/key/api/v1/text2image/status/{uuid}"
-        response = await self._make_request("GET", url)
-        
-        if not response:
-            raise Exception("Пустой ответ при проверке статуса")
-        
-        status = response.get("status")
-        self.logger.info(f"Generation status: {status}", extra={'operation': 'GENERATION_STATUS'})
-        
-        if status == "DONE":
-            if not response.get("images"):
-                raise Exception("Изображения отсутствуют в ответе")
-            return response
-        elif status in ["INITIAL", "PROCESSING"]:
-            raise Exception("Generation still in progress")
-        elif status == "FAILED":
-            error = response.get("error", "Неизвестная ошибка")
-            raise Exception(f"Генерация не удалась: {error}")
-        else:
-            raise Exception(f"Неизвестный статус генерации: {status}")
+        try:
+            url = f"{self.URL}/key/api/v1/text2image/status/{uuid}"
+            self.logger.info(f"Проверка статуса генерации: uuid={uuid}", extra={'operation': 'CHECK_STATUS'})
+            
+            response = await self._make_request("GET", url)
+            
+            if not response:
+                self.logger.error("Получен пустой ответ от сервера", extra={
+                    'operation': 'CHECK_STATUS_ERROR',
+                    'uuid': uuid
+                })
+                raise Exception("Пустой ответ при проверке статуса")
+            
+            status = response.get("status")
+            self.logger.info(f"Статус генерации: {status}", extra={
+                'operation': 'GENERATION_STATUS',
+                'uuid': uuid,
+                'status': status
+            })
+            
+            if status == "DONE":
+                images = response.get("images")
+                if not images:
+                    self.logger.error("Изображения отсутствуют в ответе", extra={
+                        'operation': 'CHECK_STATUS_ERROR',
+                        'uuid': uuid,
+                        'status': status
+                    })
+                    raise Exception("Изображения отсутствуют в ответе")
+                
+                self.logger.info("Генерация завершена успешно", extra={
+                    'operation': 'GENERATION_DONE',
+                    'uuid': uuid,
+                    'images_count': len(images)
+                })
+                return response
+                
+            elif status in ["INITIAL", "PROCESSING"]:
+                self.logger.info("Генерация все еще выполняется", extra={
+                    'operation': 'GENERATION_IN_PROGRESS',
+                    'uuid': uuid,
+                    'status': status
+                })
+                raise Exception("Generation still in progress")
+                
+            elif status == "FAILED":
+                error = response.get("error", "Неизвестная ошибка")
+                self.logger.error(f"Генерация не удалась: {error}", extra={
+                    'operation': 'GENERATION_FAILED',
+                    'uuid': uuid,
+                    'error': error
+                })
+                raise Exception(f"Генерация не удалась: {error}")
+                
+            else:
+                self.logger.error(f"Получен неизвестный статус: {status}", extra={
+                    'operation': 'UNKNOWN_STATUS',
+                    'uuid': uuid,
+                    'status': status
+                })
+                raise Exception(f"Неизвестный статус генерации: {status}")
+                
+        except Exception as e:
+            self.logger.error(f"Ошибка при проверке статуса генерации: {str(e)}", extra={
+                'operation': 'CHECK_STATUS_ERROR',
+                'uuid': uuid
+            })
+            raise
 
 # Константы для эмодзи
 class Emoji:
@@ -1013,13 +1061,15 @@ async def generate_image(message: types.Message):
         user_id = message.from_user.id
         logger.info("Получен запрос на генерацию изображения", extra={
             'user_id': user_id,
-            'operation': 'IMAGE_GENERATION_START'
+            'operation': 'IMAGE_GENERATION_START',
+            'prompt': message.text
         })
         
         if not user_states[user_id].awaiting_prompt:
             logger.warning("Получен неожиданный промпт", extra={
                 'user_id': user_id,
-                'operation': 'UNEXPECTED_PROMPT'
+                'operation': 'UNEXPECTED_PROMPT',
+                'prompt': message.text
             })
             return
 
@@ -1039,19 +1089,26 @@ async def generate_image(message: types.Message):
         if len(prompt) > Text2ImageAPI.MAX_PROMPT_LENGTH:
             logger.warning(f"Промпт превышает максимальную длину: {len(prompt)}", extra={
                 'user_id': user_id,
-                'operation': 'PROMPT_TOO_LONG'
+                'operation': 'PROMPT_TOO_LONG',
+                'prompt_length': len(prompt)
             })
             prompt = prompt[:Text2ImageAPI.MAX_PROMPT_LENGTH]
+            await message.answer(
+                f"⚠️ Ваш промпт слишком длинный и был сокращен до {Text2ImageAPI.MAX_PROMPT_LENGTH} символов.",
+                reply_markup=None
+            )
 
         # Отправляем сообщение о начале генерации
         status_message = await message.answer(
             Messages.GENERATING,
-            reply_markup=get_back_keyboard()
+            reply_markup=get_back_keyboard(),
+            parse_mode=ParseMode.HTML
         )
 
-        logger.info(f"Начало генерации изображения с промптом: {prompt}", extra={
+        logger.info(f"Начало генерации изображения", extra={
             'user_id': user_id,
-            'operation': 'GENERATION_PROCESS'
+            'operation': 'GENERATION_PROCESS',
+            'prompt': prompt
         })
 
         try:
@@ -1062,9 +1119,12 @@ async def generate_image(message: types.Message):
             height = user_settings[user_id].height
             style = user_settings[user_id].style
             
-            logger.info(f"Параметры генерации: {width}x{height}, стиль: {style}", extra={
+            logger.info(f"Параметры генерации", extra={
                 'user_id': user_id,
-                'operation': 'GENERATION_PARAMS'
+                'operation': 'GENERATION_PARAMS',
+                'width': width,
+                'height': height,
+                'style': style
             })
 
             # Получаем модель
@@ -1073,6 +1133,13 @@ async def generate_image(message: types.Message):
                 if not models:
                     raise Exception("Список моделей пуст")
                 model_id = models[0]["id"]
+                
+                logger.info(f"Получена модель", extra={
+                    'user_id': user_id,
+                    'operation': 'MODEL_INFO',
+                    'model_id': model_id
+                })
+                
             except Exception as e:
                 logger.error(f"Ошибка при получении модели: {str(e)}", extra={
                     'user_id': user_id,
@@ -1087,11 +1154,16 @@ async def generate_image(message: types.Message):
             uuid = await api.generate(styled_prompt, model_id, width, height)
             
             if not uuid:
-                raise Exception("Не удалось получить UUID для генерации")
+                logger.error("Не получен UUID генерации", extra={
+                    'user_id': user_id,
+                    'operation': 'MISSING_UUID'
+                })
+                raise Exception("Не удалось начать генерацию. Попробуйте позже.")
 
-            logger.info(f"Получен UUID генерации: {uuid}", extra={
+            logger.info(f"Запущена генерация", extra={
                 'user_id': user_id,
-                'operation': 'GENERATION_UUID'
+                'operation': 'GENERATION_UUID',
+                'uuid': uuid
             })
 
             # Ожидаем результат
@@ -1103,6 +1175,11 @@ async def generate_image(message: types.Message):
                     if response.get("status") == "DONE":
                         images = response.get("images", [])
                         if not images:
+                            logger.error("Изображение не сгенерировано", extra={
+                                'user_id': user_id,
+                                'operation': 'NO_IMAGES',
+                                'uuid': uuid
+                            })
                             raise Exception("Изображение не было сгенерировано")
                             
                         # Сохраняем изображение в памяти
@@ -1128,7 +1205,9 @@ async def generate_image(message: types.Message):
                         
                         logger.info("Изображение успешно сгенерировано", extra={
                             'user_id': user_id,
-                            'operation': 'GENERATION_SUCCESS'
+                            'operation': 'GENERATION_SUCCESS',
+                            'uuid': uuid,
+                            'image_id': image_id
                         })
                         break
 
@@ -1137,6 +1216,12 @@ async def generate_image(message: types.Message):
                 except Exception as e:
                     if "Generation still in progress" in str(e):
                         if attempt == max_attempts - 1:
+                            logger.error("Превышено время ожидания", extra={
+                                'user_id': user_id,
+                                'operation': 'TIMEOUT',
+                                'uuid': uuid,
+                                'attempts': attempt + 1
+                            })
                             raise Exception("Превышено время ожидания генерации")
                         await asyncio.sleep(1)
                         continue
@@ -1150,38 +1235,48 @@ async def generate_image(message: types.Message):
 
         except Exception as e:
             error_message = str(e)
-            logger.error(f"Ошибка при генерации: {error_message}", extra={
+            logger.error(f"Ошибка при генерации", extra={
                 'user_id': user_id,
-                'operation': 'GENERATION_ERROR'
+                'operation': 'GENERATION_ERROR',
+                'error': error_message
             })
             
             # Преобразуем технические ошибки в понятные пользователю сообщения
+            user_message = error_message
             if "Generation still in progress" in error_message:
-                error_message = "Генерация все еще выполняется. Пожалуйста, подождите."
+                user_message = "Генерация все еще выполняется. Пожалуйста, подождите."
             elif "Превышено время ожидания" in error_message:
-                error_message = "Генерация заняла слишком много времени. Попробуйте еще раз."
+                user_message = "Генерация заняла слишком много времени. Попробуйте еще раз."
             elif "авторизации" in error_message.lower():
-                error_message = "Ошибка доступа к сервису. Обратитесь к администратору."
+                user_message = "Ошибка доступа к сервису. Обратитесь к администратору."
+            elif "модели" in error_message.lower():
+                user_message = "Сервис временно недоступен. Попробуйте позже."
+            elif "Изображение не было сгенерировано" in error_message:
+                user_message = "Не удалось сгенерировать изображение. Попробуйте другой промпт или стиль."
             
             await status_message.edit_text(
-                Messages.ERROR_GEN.format(error=error_message),
-                reply_markup=get_back_keyboard()
+                Messages.ERROR_GEN.format(error=user_message),
+                reply_markup=get_back_keyboard(),
+                parse_mode=ParseMode.HTML
             )
             
     except Exception as e:
         logger.error(f"Критическая ошибка в generate_image: {str(e)}", extra={
             'user_id': user_id if 'user_id' in locals() else 'N/A',
-            'operation': 'CRITICAL_ERROR'
+            'operation': 'CRITICAL_ERROR',
+            'error': str(e)
         })
         if 'status_message' in locals():
             await status_message.edit_text(
                 Messages.ERROR_CRITICAL,
-                reply_markup=get_back_keyboard()
+                reply_markup=get_back_keyboard(),
+                parse_mode=ParseMode.HTML
             )
         else:
             await message.answer(
                 Messages.ERROR_CRITICAL,
-                reply_markup=get_back_keyboard()
+                reply_markup=get_back_keyboard(),
+                parse_mode=ParseMode.HTML
             )
 
 async def main():
