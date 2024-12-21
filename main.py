@@ -462,50 +462,116 @@ IMAGE_STYLES = {
     },
     "ANIME": {
         "label": "Аниме",
-        "prompt_prefix": "anime style, anime art, ",
+        "prompt_prefix": "anime style, anime art, high quality anime art, ",
         "description": "Стиль японской анимации",
         "model_id": 1
     },
     "REALISTIC": {
         "label": "Реалистичный",
-        "prompt_prefix": "realistic, photorealistic, hyperrealistic, ",
+        "prompt_prefix": "realistic, photorealistic, hyperrealistic, 8k uhd, high quality, detailed, ",
         "description": "Максимально реалистичное изображение",
         "model_id": 1
     },
     "PORTRAIT": {
         "label": "Портрет",
-        "prompt_prefix": "portrait style, professional portrait, ",
+        "prompt_prefix": "portrait style, professional portrait, detailed face features, studio lighting, ",
         "description": "Профессиональный портретный стиль",
         "model_id": 1
     },
     "STUDIO_GHIBLI": {
         "label": "Студия Гибли",
-        "prompt_prefix": "studio ghibli style, ghibli anime, ",
+        "prompt_prefix": "studio ghibli style, ghibli anime, hayao miyazaki style, ",
         "description": "В стиле анимационных фильмов Студии Гибли",
         "model_id": 1
     },
     "CYBERPUNK": {
         "label": "Киберпанк",
-        "prompt_prefix": "cyberpunk style, neon, futuristic, ",
+        "prompt_prefix": "cyberpunk style, neon lights, futuristic city, high tech low life, ",
         "description": "Футуристический стиль киберпанка",
         "model_id": 1
     },
     "WATERCOLOR": {
         "label": "Акварель",
-        "prompt_prefix": "watercolor painting, watercolor art style, ",
+        "prompt_prefix": "watercolor painting, watercolor art style, soft colors, flowing paint, ",
         "description": "Акварельная живопись",
         "model_id": 1
     },
     "OIL_PAINTING": {
         "label": "Масло",
-        "prompt_prefix": "oil painting style, classical art, ",
-        "description": "Классическая масляная живопись",
+        "prompt_prefix": "oil painting style, classical art, detailed brush strokes, ",
+        "description": "Масляная живопись",
         "model_id": 1
     },
-    "PENCIL_DRAWING": {
-        "label": "Карандаш",
-        "prompt_prefix": "pencil drawing, sketch style, ",
+    "DIGITAL_ART": {
+        "label": "Цифровое искусство",
+        "prompt_prefix": "digital art, digital painting, concept art, highly detailed digital illustration, ",
+        "description": "Современное цифровое искусство",
+        "model_id": 1
+    },
+    "PENCIL_SKETCH": {
+        "label": "Карандашный эскиз",
+        "prompt_prefix": "pencil sketch, graphite drawing, detailed line art, black and white sketch, ",
         "description": "Карандашный рисунок",
+        "model_id": 1
+    },
+    "POP_ART": {
+        "label": "Поп-арт",
+        "prompt_prefix": "pop art style, bright colors, bold patterns, comic book style, ",
+        "description": "Яркий стиль поп-арт",
+        "model_id": 1
+    },
+    "STEAMPUNK": {
+        "label": "Стимпанк",
+        "prompt_prefix": "steampunk style, victorian era, brass and copper, mechanical parts, steam-powered machinery, ",
+        "description": "Стиль альтернативной викторианской эпохи",
+        "model_id": 1
+    },
+    "FANTASY": {
+        "label": "Фэнтези",
+        "prompt_prefix": "fantasy art style, magical, mystical, ethereal atmosphere, ",
+        "description": "Фэнтезийный стиль",
+        "model_id": 1
+    },
+    "MINIMALIST": {
+        "label": "Минимализм",
+        "prompt_prefix": "minimalist style, simple shapes, clean lines, minimal color palette, ",
+        "description": "Минималистичный стиль",
+        "model_id": 1
+    },
+    "IMPRESSIONIST": {
+        "label": "Импрессионизм",
+        "prompt_prefix": "impressionist painting style, loose brush strokes, light and color focus, plein air, ",
+        "description": "Стиль импрессионизма",
+        "model_id": 1
+    },
+    "SURREALISM": {
+        "label": "Сюрреализм",
+        "prompt_prefix": "surrealist art style, dreamlike, abstract elements, symbolic imagery, ",
+        "description": "Сюрреалистический стиль",
+        "model_id": 1
+    },
+    "COMIC": {
+        "label": "Комикс",
+        "prompt_prefix": "comic book style, bold outlines, cel shading, action lines, ",
+        "description": "Стиль комиксов",
+        "model_id": 1
+    },
+    "PIXEL_ART": {
+        "label": "Пиксель-арт",
+        "prompt_prefix": "pixel art style, retro gaming, 8-bit graphics, pixelated, ",
+        "description": "Пиксельная графика",
+        "model_id": 1
+    },
+    "GOTHIC": {
+        "label": "Готика",
+        "prompt_prefix": "gothic art style, dark atmosphere, medieval architecture, dramatic lighting, ",
+        "description": "Готический стиль",
+        "model_id": 1
+    },
+    "RETRO": {
+        "label": "Ретро",
+        "prompt_prefix": "retro style, vintage aesthetics, old school design, nostalgic feel, ",
+        "description": "Ретро стиль",
         "model_id": 1
     }
 }
