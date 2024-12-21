@@ -428,6 +428,7 @@ class CallbackData:
     REMOVE_BG = "remove_bg"
     STYLES = "styles"  # Новый callback для меню стилей
     STYLE_PREFIX = "style_"  # Префикс для выбора стиля
+    REGENERATE = "regenerate"  # Новый callback для повторной генерации
 
 # Доступные размеры изображений
 IMAGE_SIZES = {
@@ -456,72 +457,56 @@ IMAGE_STYLES = {
     "DEFAULT": {
         "label": "Обычный",
         "prompt_prefix": "",
-        "description": "Стандартный стиль без дополнительных модификаций"
+        "description": "Стандартный стиль без дополнительных модификаций",
+        "model_id": 1
     },
     "ANIME": {
         "label": "Аниме",
         "prompt_prefix": "anime style, anime art, ",
-        "description": "Стиль японской анимации"
+        "description": "Стиль японской анимации",
+        "model_id": 1
     },
     "REALISTIC": {
         "label": "Реалистичный",
         "prompt_prefix": "realistic, photorealistic, hyperrealistic, ",
-        "description": "Максимально реалистичное изображение"
+        "description": "Максимально реалистичное изображение",
+        "model_id": 1
     },
     "PORTRAIT": {
         "label": "Портрет",
         "prompt_prefix": "portrait style, professional portrait, ",
-        "description": "Профессиональный портретный стиль"
+        "description": "Профессиональный портретный стиль",
+        "model_id": 1
     },
     "STUDIO_GHIBLI": {
         "label": "Студия Гибли",
         "prompt_prefix": "studio ghibli style, ghibli anime, ",
-        "description": "В стиле анимационных фильмов Студии Гибли"
+        "description": "В стиле анимационных фильмов Студии Гибли",
+        "model_id": 1
     },
     "CYBERPUNK": {
         "label": "Киберпанк",
         "prompt_prefix": "cyberpunk style, neon, futuristic, ",
-        "description": "Футуристический стиль киберпанка"
+        "description": "Футуристический стиль киберпанка",
+        "model_id": 1
     },
     "WATERCOLOR": {
         "label": "Акварель",
         "prompt_prefix": "watercolor painting, watercolor art style, ",
-        "description": "Акварельная живопись"
+        "description": "Акварельная живопись",
+        "model_id": 1
     },
     "OIL_PAINTING": {
         "label": "Масло",
         "prompt_prefix": "oil painting style, classical art, ",
-        "description": "Классическая масляная живопись"
+        "description": "Классическая масляная живопись",
+        "model_id": 1
     },
     "PENCIL_DRAWING": {
         "label": "Карандаш",
         "prompt_prefix": "pencil drawing, sketch style, ",
-        "description": "Карандашный рисунок"
-    },
-    "DIGITAL_ART": {
-        "label": "Цифровое искусство",
-        "prompt_prefix": "digital art, digital painting, ",
-        "description": "Современное цифровое искусство"
-    },
-    "POP_ART": {
-        "label": "Поп-арт",
-        "prompt_prefix": "pop art style, vibrant colors, ",
-        "description": "Яркий стиль поп-арт"
-    },
-    "STEAMPUNK": {
-        "label": "Стимпанк",
-        "prompt_prefix": "steampunk style, victorian sci-fi, ",
-        "description": "Викторианский научно-фантастический стиль"
-    },
-    "MINIMALIST": {
-        "label": "Минимализм",
-        "prompt_prefix": "minimalist style, simple, clean, ",
-        "description": "Минималистичный стиль"
-    },
-    "FANTASY": {
-        "label": "Фэнтези",
-        "prompt_prefix": "fantasy art style, magical, mystical, ",
-        "description": "Фэнтезийный стиль"
+        "description": "Карандашный рисунок",
+        "model_id": 1
     }
 }
 
@@ -533,6 +518,7 @@ class UserState:
         self.awaiting_prompt = False
         self.last_image = None  # Хранение последнего сгенерированного изображения
         self.last_image_id = None  # ID последнего изображения для callback
+        self.last_prompt = None  # Хранение последнего промпта
 
 # Словарь для хранения пользовательских настроек
 class UserSettings:
@@ -959,6 +945,487 @@ async def process_style_change(callback_query: CallbackQuery):
         })
         await callback_query.answer("Произошла ошибка. Попробуйте еще раз.")
 
+@router.callback_query(F.data == CallbackData.REGENERATE)
+async def regenerate_image(callback_query: CallbackQuery):
+    """Обработчик повторной генерации изображения"""
+    user_id = callback_query.from_user.id
+    user_state = user_states[user_id]
+    
+    try:
+        if not user_state.last_prompt:
+            logger.warning("Попытка регенерации без сохраненного промпта", extra={
+                'user_id': user_id,
+                'operation': 'REGENERATION_NO_PROMPT'
+            })
+            await callback_query.answer("Нет сохранённого промпта для повторной генерации", show_alert=True)
+            return
+
+        if not callback_query.message:
+            logger.error("Отсутствует сообщение для регенерации", extra={
+                'user_id': user_id,
+                'operation': 'REGENERATION_NO_MESSAGE'
+            })
+            await callback_query.answer("Ошибка: невозможно выполнить регенерацию", show_alert=True)
+            return
+
+        logger.info("Запуск повторной генерации", extra={
+            'user_id': user_id,
+            'operation': 'REGENERATION_START',
+            'prompt': user_state.last_prompt
+        })
+
+        # Отправляем сообщение о начале генерации
+        status_message = await callback_query.message.answer(
+            Messages.GENERATING,
+            reply_markup=get_back_keyboard(),
+            parse_mode=ParseMode.HTML
+        )
+
+        # Проверяем наличие и валидность ключей API
+        api_key = os.getenv('FUSIONBRAIN_API_KEY')
+        secret_key = os.getenv('FUSIONBRAIN_SECRET_KEY')
+
+        if not api_key or not secret_key:
+            logger.error("Отсутствуют ключи API", extra={
+                'user_id': user_id,
+                'operation': 'MISSING_API_KEYS'
+            })
+            await status_message.edit_text(
+                "⚠️ Ошибка конфигурации: отсутствуют ключи API. Обратитесь к администратору.",
+                reply_markup=get_back_keyboard()
+            )
+            return
+
+        # Создаем экземпляр API
+        api = Text2ImageAPI(api_key, secret_key)
+        
+        # Получаем настройки пользователя
+        user_settings_data = user_settings[user_id]
+        width = user_settings_data.width
+        height = user_settings_data.height
+        style = user_settings_data.style
+        
+        try:
+            # Получаем доступные модели
+            models = await api.get_model()
+            if not models:
+                raise Exception("Список моделей пуст")
+            model_id = models[0]["id"]
+            
+            logger.info("Получена модель", extra={
+                'user_id': user_id,
+                'operation': 'MODEL_INFO',
+                'model_id': model_id
+            })
+            
+            # Получаем стиль и добавляем префикс к промпту
+            style_data = IMAGE_STYLES[style]
+            styled_prompt = f"{style_data['prompt_prefix']}{user_state.last_prompt}"
+            
+            # Запускаем генерацию
+            uuid = await api.generate(styled_prompt, model_id, width, height)
+            
+            # Проверяем статус генерации
+            await check_generation_status(api, uuid, status_message, user_id)
+            
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Ошибка при генерации: {error_msg}", extra={
+                'user_id': user_id,
+                'operation': 'GENERATION_ERROR',
+                'error': error_msg
+            })
+            
+            # Преобразуем технические ошибки в понятные пользователю сообщения
+            user_message = str(e)
+            if "Generation still in progress" in str(e):
+                user_message = "Генерация все еще выполняется. Пожалуйста, подождите."
+            elif "Превышено время ожидания" in str(e):
+                user_message = "Генерация заняла слишком много времени. Попробуйте еще раз."
+            elif "авторизации" in str(e).lower():
+                user_message = "Ошибка доступа к сервису. Обратитесь к администратору."
+            elif "модели" in str(e).lower():
+                user_message = "Сервис временно недоступен. Попробуйте позже."
+            elif "Изображение не было сгенерировано" in str(e):
+                user_message = "Не удалось сгенерировать изображение. Попробуйте другой промпт или стиль."
+            
+            await status_message.edit_text(
+                Messages.ERROR_GEN.format(error=user_message),
+                reply_markup=get_back_keyboard()
+            )
+            return
+        
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Ошибка при запуске регенерации: {error_msg}", extra={
+            'user_id': user_id,
+            'operation': 'REGENERATION_ERROR',
+            'error': error_msg
+        })
+        await callback_query.answer(
+            "Произошла ошибка при запуске регенерации. Попробуйте позже.", 
+            show_alert=True
+        )
+
+async def generate_image_with_prompt(message: types.Message, prompt: str):
+    user_id = message.from_user.id
+    logger.info("Начало генерации изображения", extra={
+        'user_id': user_id,
+        'operation': 'GENERATION_START',
+        'prompt': prompt
+    })
+
+    # Сохраняем последний промпт сразу после начала генерации
+    user_states[user_id].last_prompt = prompt
+
+    # Проверяем наличие и валидность ключей API
+    api_key = os.getenv('FUSIONBRAIN_API_KEY')
+    secret_key = os.getenv('FUSIONBRAIN_SECRET_KEY')
+
+    # Проверяем наличие ключей API
+    if not all([FUSIONBRAIN_API_KEY, FUSIONBRAIN_SECRET_KEY]):
+        logger.error("Отсутствуют ключи API", extra={
+            'user_id': user_id,
+            'operation': 'MISSING_API_KEYS'
+        })
+        await message.answer(
+            "⚠️ Ошибка конфигурации: отсутствуют ключи API. Обратитесь к администратору.",
+            reply_markup=get_back_keyboard()
+        )
+        return
+
+    prompt = message.text
+    if len(prompt) > Text2ImageAPI.MAX_PROMPT_LENGTH:
+        logger.warning(f"Промпт превышает максимальную длину: {len(prompt)}", extra={
+            'user_id': user_id,
+            'operation': 'PROMPT_TOO_LONG',
+            'prompt_length': len(prompt)
+        })
+        prompt = prompt[:Text2ImageAPI.MAX_PROMPT_LENGTH]
+        await message.answer(
+            f"⚠️ Ваш промпт слишком длинный и был сокращен до {Text2ImageAPI.MAX_PROMPT_LENGTH} символов.",
+            reply_markup=None
+        )
+
+    # Сохраняем последний промпт
+    user_states[user_id].last_prompt = prompt
+
+    # Отправляем сообщение о начале генерации
+    status_message = await message.answer(
+        Messages.GENERATING,
+        reply_markup=get_back_keyboard(),
+        parse_mode=ParseMode.HTML
+    )
+
+    logger.info(f"Начало генерации изображения", extra={
+        'user_id': user_id,
+        'operation': 'GENERATION_PROCESS',
+        'prompt': prompt
+    })
+
+    try:
+        # Инициализируем API и запускаем генерацию
+        api = Text2ImageAPI(FUSIONBRAIN_API_KEY, FUSIONBRAIN_SECRET_KEY)
+        
+        width = user_settings[user_id].width
+        height = user_settings[user_id].height
+        style = user_settings[user_id].style
+        
+        logger.info(f"Параметры генерации", extra={
+            'user_id': user_id,
+            'operation': 'GENERATION_PARAMS',
+            'width': width,
+            'height': height,
+            'style': style
+        })
+
+        # Получаем модель
+        try:
+            models = await api.get_model()
+            if not models:
+                raise Exception("Список моделей пуст")
+            model_id = models[0]["id"]
+            
+            logger.info(f"Получена модель", extra={
+                'user_id': user_id,
+                'operation': 'MODEL_INFO',
+                'model_id': model_id
+            })
+            
+        except Exception as e:
+            logger.error(f"Ошибка при получении модели: {str(e)}", extra={
+                'user_id': user_id,
+                'operation': 'MODEL_ERROR'
+            })
+            raise Exception("Не удалось получить доступ к модели генерации. Попробуйте позже.")
+        
+        # Формируем промпт с учетом стиля
+        styled_prompt = f"{prompt}, {IMAGE_STYLES[style]['prompt_prefix']}" if style != "DEFAULT" else prompt
+        
+        # Запускаем генерацию
+        uuid = await api.generate(styled_prompt, model_id, width, height)
+        
+        # Проверяем статус генерации
+        await check_generation_status(api, uuid, status_message, user_id)
+
+    except Exception as e:
+        logger.error(f"Ошибка при генерации: {str(e)}", extra={
+            'user_id': user_id,
+            'operation': 'GENERATION_ERROR'
+        })
+        
+        # Преобразуем технические ошибки в понятные пользователю сообщения
+        user_message = str(e)
+        if "Generation still in progress" in str(e):
+            user_message = "Генерация все еще выполняется. Пожалуйста, подождите."
+        elif "Превышено время ожидания" in str(e):
+            user_message = "Генерация заняла слишком много времени. Попробуйте еще раз."
+        elif "авторизации" in str(e).lower():
+            user_message = "Ошибка доступа к сервису. Обратитесь к администратору."
+        elif "модели" in str(e).lower():
+            user_message = "Сервис временно недоступен. Попробуйте позже."
+        elif "Изображение не было сгенерировано" in str(e):
+            user_message = "Не удалось сгенерировать изображение. Попробуйте другой промпт или стиль."
+        
+        await status_message.edit_text(
+            Messages.ERROR_GEN.format(error=user_message),
+            reply_markup=get_back_keyboard(),
+            parse_mode=ParseMode.HTML
+        )
+        
+async def check_generation_status(api, uuid, status_message, user_id):
+    try:
+        max_attempts = 60  # Максимальное количество попыток
+        for attempt in range(max_attempts):
+            try:
+                response = await api.check_generation(uuid)
+                
+                if response.get("status") == "DONE":
+                    images = response.get("images")
+                    if not images:
+                        logger.error("Изображения отсутствуют в ответе", extra={
+                            'user_id': user_id,
+                            'operation': 'NO_IMAGES',
+                            'uuid': uuid
+                        })
+                        raise Exception("Изображение не было сгенерировано")
+                        
+                    # Сохраняем изображение в памяти
+                    image_data = base64.b64decode(images[0])
+                    user_states[user_id].last_image = image_data
+                    image_id = str(uuid_lib.uuid4())
+                    user_states[user_id].last_image_id = image_id
+                    
+                    # Получаем текущие настройки пользователя
+                    user_settings_data = user_settings[user_id]
+                    style = user_settings_data.style
+                    width = user_settings_data.width
+                    height = user_settings_data.height
+                    
+                    # Отправляем изображение
+                    await status_message.answer_photo(
+                        BufferedInputFile(
+                            image_data,
+                            filename=f"generation_{image_id}.png"
+                        ),
+                        caption=(
+                            f"🎨 Стиль: <b>{IMAGE_STYLES[style]['label']}</b>\n"
+                            f"📏 Размер: <b>{width}x{height}</b>\n"
+                            f"💭 Промпт: <i>{user_states[user_id].last_prompt}</i>"
+                        ),
+                        reply_markup=get_image_keyboard(image_id),
+                        parse_mode=ParseMode.HTML
+                    )
+                    
+                    # Удаляем статусное сообщение
+                    await status_message.delete()
+                    
+                    logger.info("Изображение успешно сгенерировано и отправлено", extra={
+                        'user_id': user_id,
+                        'operation': 'GENERATION_SUCCESS',
+                        'uuid': uuid,
+                        'image_id': image_id
+                    })
+                    break
+
+                await asyncio.sleep(1)
+                    
+            except Exception as e:
+                if "Generation still in progress" in str(e):
+                    if attempt == max_attempts - 1:
+                        logger.error("Превышено время ожидания", extra={
+                            'user_id': user_id,
+                            'operation': 'TIMEOUT',
+                            'uuid': uuid,
+                            'attempts': attempt + 1
+                        })
+                        raise Exception("Превышено время ожидания генерации")
+                    await asyncio.sleep(1)
+                    continue
+                raise e
+        
+        # Сбрасываем состояние ожидания промпта
+        user_states[user_id].awaiting_prompt = False
+
+    except Exception as e:
+        logger.error(f"Ошибка при проверке статуса генерации: {str(e)}", extra={
+            'user_id': user_id,
+            'operation': 'CHECK_STATUS_ERROR'
+        })
+        await status_message.edit_text(
+            f"Ошибка: {str(e)}",
+            reply_markup=get_back_keyboard()
+        )
+
+@router.message()
+async def generate_image(message: types.Message):
+    """Генерирует изображение на основе промпта"""
+    try:
+        user_id = message.from_user.id
+        logger.info("Получен запрос на генерацию изображения", extra={
+            'user_id': user_id,
+            'operation': 'IMAGE_GENERATION_START',
+            'prompt': message.text
+        })
+        
+        if not user_states[user_id].awaiting_prompt:
+            logger.warning("Получен неожиданный промпт", extra={
+                'user_id': user_id,
+                'operation': 'UNEXPECTED_PROMPT',
+                'prompt': message.text
+            })
+            return
+
+        # Проверяем наличие ключей API
+        if not all([FUSIONBRAIN_API_KEY, FUSIONBRAIN_SECRET_KEY]):
+            logger.error("Отсутствуют ключи API", extra={
+                'user_id': user_id,
+                'operation': 'MISSING_API_KEYS'
+            })
+            await message.answer(
+                "⚠️ Ошибка конфигурации: отсутствуют ключи API. Обратитесь к администратору.",
+                reply_markup=get_back_keyboard()
+            )
+            return
+
+        prompt = message.text
+        if len(prompt) > Text2ImageAPI.MAX_PROMPT_LENGTH:
+            logger.warning(f"Промпт превышает максимальную длину: {len(prompt)}", extra={
+                'user_id': user_id,
+                'operation': 'PROMPT_TOO_LONG',
+                'prompt_length': len(prompt)
+            })
+            prompt = prompt[:Text2ImageAPI.MAX_PROMPT_LENGTH]
+            await message.answer(
+                f"⚠️ Ваш промпт слишком длинный и был сокращен до {Text2ImageAPI.MAX_PROMPT_LENGTH} символов.",
+                reply_markup=None
+            )
+
+        # Сохраняем последний промпт
+        user_states[user_id].last_prompt = prompt
+
+        # Отправляем сообщение о начале генерации
+        status_message = await message.answer(
+            Messages.GENERATING,
+            reply_markup=get_back_keyboard(),
+            parse_mode=ParseMode.HTML
+        )
+
+        logger.info(f"Начало генерации изображения", extra={
+            'user_id': user_id,
+            'operation': 'GENERATION_PROCESS',
+            'prompt': prompt
+        })
+
+        try:
+            # Инициализируем API и запускаем генерацию
+            api = Text2ImageAPI(FUSIONBRAIN_API_KEY, FUSIONBRAIN_SECRET_KEY)
+            
+            width = user_settings[user_id].width
+            height = user_settings[user_id].height
+            style = user_settings[user_id].style
+            
+            logger.info(f"Параметры генерации", extra={
+                'user_id': user_id,
+                'operation': 'GENERATION_PARAMS',
+                'width': width,
+                'height': height,
+                'style': style
+            })
+
+            # Получаем модель
+            try:
+                models = await api.get_model()
+                if not models:
+                    raise Exception("Список моделей пуст")
+                model_id = models[0]["id"]
+                
+                logger.info(f"Получена модель", extra={
+                    'user_id': user_id,
+                    'operation': 'MODEL_INFO',
+                    'model_id': model_id
+                })
+                
+            except Exception as e:
+                logger.error(f"Ошибка при получении модели: {str(e)}", extra={
+                    'user_id': user_id,
+                    'operation': 'MODEL_ERROR'
+                })
+                raise Exception("Не удалось получить доступ к модели генерации. Попробуйте позже.")
+            
+            # Формируем промпт с учетом стиля
+            styled_prompt = f"{prompt}, {IMAGE_STYLES[style]['prompt_prefix']}" if style != "DEFAULT" else prompt
+            
+            # Запускаем генерацию
+            uuid = await api.generate(styled_prompt, model_id, width, height)
+            
+            # Проверяем статус генерации
+            await check_generation_status(api, uuid, status_message, user_id)
+
+        except Exception as e:
+            logger.error(f"Ошибка при генерации: {str(e)}", extra={
+                'user_id': user_id,
+                'operation': 'GENERATION_ERROR'
+            })
+            
+            # Преобразуем технические ошибки в понятные пользователю сообщения
+            user_message = str(e)
+            if "Generation still in progress" in str(e):
+                user_message = "Генерация все еще выполняется. Пожалуйста, подождите."
+            elif "Превышено время ожидания" in str(e):
+                user_message = "Генерация заняла слишком много времени. Попробуйте еще раз."
+            elif "авторизации" in str(e).lower():
+                user_message = "Ошибка доступа к сервису. Обратитесь к администратору."
+            elif "модели" in str(e).lower():
+                user_message = "Сервис временно недоступен. Попробуйте позже."
+            elif "Изображение не было сгенерировано" in str(e):
+                user_message = "Не удалось сгенерировать изображение. Попробуйте другой промпт или стиль."
+            
+            await status_message.edit_text(
+                Messages.ERROR_GEN.format(error=user_message),
+                reply_markup=get_back_keyboard(),
+                parse_mode=ParseMode.HTML
+            )
+            
+    except Exception as e:
+        logger.error(f"Критическая ошибка в generate_image: {str(e)}", extra={
+            'user_id': user_id if 'user_id' in locals() else 'N/A',
+            'operation': 'CRITICAL_ERROR',
+            'error': str(e)
+        })
+        if 'status_message' in locals():
+            await status_message.edit_text(
+                Messages.ERROR_CRITICAL,
+                reply_markup=get_back_keyboard(),
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await message.answer(
+                Messages.ERROR_CRITICAL,
+                reply_markup=get_back_keyboard(),
+                parse_mode=ParseMode.HTML
+            )
+
 def get_image_keyboard(image_id: str) -> InlineKeyboardMarkup:
     """Создает клавиатуру для изображения"""
     keyboard = [
@@ -981,6 +1448,7 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
     """Создает основную клавиатуру с главным меню"""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"{Emoji.CREATE} Создать", callback_data=CallbackData.GENERATE)],
+        [InlineKeyboardButton(text=f"{Emoji.CREATE} Повторить генерацию", callback_data=CallbackData.REGENERATE)],
         [InlineKeyboardButton(text=f"{Emoji.SETTINGS} Стили", callback_data=CallbackData.STYLES)],
         [InlineKeyboardButton(text=f"{Emoji.SETTINGS} Настройки", callback_data=CallbackData.SETTINGS)],
         [InlineKeyboardButton(text=f"{Emoji.HELP} Помощь", callback_data=CallbackData.HELP)]
@@ -1043,241 +1511,28 @@ def get_styles_keyboard() -> InlineKeyboardMarkup:
 def get_prompt_keyboard() -> InlineKeyboardMarkup:
     """Создает клавиатуру для режима ввода промпта"""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"{Emoji.SETTINGS} Стиль", callback_data=CallbackData.STYLES)],
-        [InlineKeyboardButton(text=f"{Emoji.SETTINGS} Размер", callback_data=CallbackData.SETTINGS)],
-        [InlineKeyboardButton(text=f"{Emoji.BACK} В главное меню", callback_data=CallbackData.BACK)]
+        [InlineKeyboardButton(
+            text=f"{Emoji.SETTINGS} Стиль",
+            callback_data=CallbackData.STYLES
+        )],
+        [InlineKeyboardButton(
+            text=f"{Emoji.SETTINGS} Размер",
+            callback_data=CallbackData.SETTINGS
+        )],
+        [InlineKeyboardButton(
+            text=f"{Emoji.BACK} В главное меню",
+            callback_data=CallbackData.BACK
+        )]
     ])
 
 def get_back_keyboard() -> InlineKeyboardMarkup:
     """Создает клавиатуру для возврата"""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"{Emoji.BACK} В главное меню", callback_data=CallbackData.BACK)]
+        [InlineKeyboardButton(
+            text=f"{Emoji.BACK} В главное меню",
+            callback_data=CallbackData.BACK
+        )]
     ])
-
-@router.message()
-async def generate_image(message: types.Message):
-    """Генерирует изображение на основе промпта"""
-    try:
-        user_id = message.from_user.id
-        logger.info("Получен запрос на генерацию изображения", extra={
-            'user_id': user_id,
-            'operation': 'IMAGE_GENERATION_START',
-            'prompt': message.text
-        })
-        
-        if not user_states[user_id].awaiting_prompt:
-            logger.warning("Получен неожиданный промпт", extra={
-                'user_id': user_id,
-                'operation': 'UNEXPECTED_PROMPT',
-                'prompt': message.text
-            })
-            return
-
-        # Проверяем наличие ключей API
-        if not all([FUSIONBRAIN_API_KEY, FUSIONBRAIN_SECRET_KEY]):
-            logger.error("Отсутствуют ключи API", extra={
-                'user_id': user_id,
-                'operation': 'MISSING_API_KEYS'
-            })
-            await message.answer(
-                "⚠️ Ошибка конфигурации: отсутствуют ключи API. Обратитесь к администратору.",
-                reply_markup=get_back_keyboard()
-            )
-            return
-
-        prompt = message.text
-        if len(prompt) > Text2ImageAPI.MAX_PROMPT_LENGTH:
-            logger.warning(f"Промпт превышает максимальную длину: {len(prompt)}", extra={
-                'user_id': user_id,
-                'operation': 'PROMPT_TOO_LONG',
-                'prompt_length': len(prompt)
-            })
-            prompt = prompt[:Text2ImageAPI.MAX_PROMPT_LENGTH]
-            await message.answer(
-                f"⚠️ Ваш промпт слишком длинный и был сокращен до {Text2ImageAPI.MAX_PROMPT_LENGTH} символов.",
-                reply_markup=None
-            )
-
-        # Отправляем сообщение о начале генерации
-        status_message = await message.answer(
-            Messages.GENERATING,
-            reply_markup=get_back_keyboard(),
-            parse_mode=ParseMode.HTML
-        )
-
-        logger.info(f"Начало генерации изображения", extra={
-            'user_id': user_id,
-            'operation': 'GENERATION_PROCESS',
-            'prompt': prompt
-        })
-
-        try:
-            # Инициализируем API и запускаем генерацию
-            api = Text2ImageAPI(FUSIONBRAIN_API_KEY, FUSIONBRAIN_SECRET_KEY)
-            
-            width = user_settings[user_id].width
-            height = user_settings[user_id].height
-            style = user_settings[user_id].style
-            
-            logger.info(f"Параметры генерации", extra={
-                'user_id': user_id,
-                'operation': 'GENERATION_PARAMS',
-                'width': width,
-                'height': height,
-                'style': style
-            })
-
-            # Получаем модель
-            try:
-                models = await api.get_model()
-                if not models:
-                    raise Exception("Список моделей пуст")
-                model_id = models[0]["id"]
-                
-                logger.info(f"Получена модель", extra={
-                    'user_id': user_id,
-                    'operation': 'MODEL_INFO',
-                    'model_id': model_id
-                })
-                
-            except Exception as e:
-                logger.error(f"Ошибка при получении модели: {str(e)}", extra={
-                    'user_id': user_id,
-                    'operation': 'MODEL_ERROR'
-                })
-                raise Exception("Не удалось получить доступ к модели генерации. Попробуйте позже.")
-            
-            # Формируем промпт с учетом стиля
-            styled_prompt = f"{prompt}, {IMAGE_STYLES[style]['prompt_prefix']}" if style != "DEFAULT" else prompt
-            
-            # Запускаем генерацию
-            uuid = await api.generate(styled_prompt, model_id, width, height)
-            
-            if not uuid:
-                logger.error("Не получен UUID генерации", extra={
-                    'user_id': user_id,
-                    'operation': 'MISSING_UUID'
-                })
-                raise Exception("Не удалось начать генерацию. Попробуйте позже.")
-
-            logger.info(f"Запущена генерация", extra={
-                'user_id': user_id,
-                'operation': 'GENERATION_UUID',
-                'uuid': uuid
-            })
-
-            # Ожидаем результат
-            max_attempts = 60  # Максимальное количество попыток
-            for attempt in range(max_attempts):
-                try:
-                    response = await api.check_generation(uuid)
-                    
-                    if response.get("status") == "DONE":
-                        images = response.get("images", [])
-                        if not images:
-                            logger.error("Изображение не сгенерировано", extra={
-                                'user_id': user_id,
-                                'operation': 'NO_IMAGES',
-                                'uuid': uuid
-                            })
-                            raise Exception("Изображение не было сгенерировано")
-                            
-                        # Сохраняем изображение в памяти
-                        image_data = base64.b64decode(images[0])
-                        user_states[user_id].last_image = image_data
-                        image_id = str(uuid_lib.uuid4())
-                        user_states[user_id].last_image_id = image_id
-                        
-                        # Отправляем изображение
-                        await message.answer_photo(
-                            BufferedInputFile(
-                                image_data,
-                                filename=f"generation_{image_id}.png"
-                            ),
-                            caption=(
-                                f"🎨 Стиль: <b>{IMAGE_STYLES[style]['label']}</b>\n"
-                                f"📏 Размер: <b>{width}x{height}</b>\n"
-                                f"💭 Промпт: <i>{message.text}</i>"
-                            ),
-                            reply_markup=get_image_keyboard(image_id),
-                            parse_mode=ParseMode.HTML
-                        )
-                        
-                        logger.info("Изображение успешно сгенерировано", extra={
-                            'user_id': user_id,
-                            'operation': 'GENERATION_SUCCESS',
-                            'uuid': uuid,
-                            'image_id': image_id
-                        })
-                        break
-
-                    await asyncio.sleep(1)
-                        
-                except Exception as e:
-                    if "Generation still in progress" in str(e):
-                        if attempt == max_attempts - 1:
-                            logger.error("Превышено время ожидания", extra={
-                                'user_id': user_id,
-                                'operation': 'TIMEOUT',
-                                'uuid': uuid,
-                                'attempts': attempt + 1
-                            })
-                            raise Exception("Превышено время ожидания генерации")
-                        await asyncio.sleep(1)
-                        continue
-                    raise e
-
-            # Удаляем статусное сообщение
-            await status_message.delete()
-            
-            # Сбрасываем состояние ожидания промпта
-            user_states[user_id].awaiting_prompt = False
-
-        except Exception as e:
-            error_message = str(e)
-            logger.error(f"Ошибка при генерации", extra={
-                'user_id': user_id,
-                'operation': 'GENERATION_ERROR',
-                'error': error_message
-            })
-            
-            # Преобразуем технические ошибки в понятные пользователю сообщения
-            user_message = error_message
-            if "Generation still in progress" in error_message:
-                user_message = "Генерация все еще выполняется. Пожалуйста, подождите."
-            elif "Превышено время ожидания" in error_message:
-                user_message = "Генерация заняла слишком много времени. Попробуйте еще раз."
-            elif "авторизации" in error_message.lower():
-                user_message = "Ошибка доступа к сервису. Обратитесь к администратору."
-            elif "модели" in error_message.lower():
-                user_message = "Сервис временно недоступен. Попробуйте позже."
-            elif "Изображение не было сгенерировано" in error_message:
-                user_message = "Не удалось сгенерировать изображение. Попробуйте другой промпт или стиль."
-            
-            await status_message.edit_text(
-                Messages.ERROR_GEN.format(error=user_message),
-                reply_markup=get_back_keyboard(),
-                parse_mode=ParseMode.HTML
-            )
-            
-    except Exception as e:
-        logger.error(f"Критическая ошибка в generate_image: {str(e)}", extra={
-            'user_id': user_id if 'user_id' in locals() else 'N/A',
-            'operation': 'CRITICAL_ERROR',
-            'error': str(e)
-        })
-        if 'status_message' in locals():
-            await status_message.edit_text(
-                Messages.ERROR_CRITICAL,
-                reply_markup=get_back_keyboard(),
-                parse_mode=ParseMode.HTML
-            )
-        else:
-            await message.answer(
-                Messages.ERROR_CRITICAL,
-                reply_markup=get_back_keyboard(),
-                parse_mode=ParseMode.HTML
-            )
 
 async def main():
     """Запуск бота"""
