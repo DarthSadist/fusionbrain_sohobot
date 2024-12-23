@@ -1,9 +1,9 @@
 from dataclasses import dataclass
-from typing import Dict, Any
+from typing import Dict, Any, Final
+from enum import Enum, auto
 
-@dataclass
-class Emoji:
-    """Константы для эмодзи"""
+class EmojiEnum(str, Enum):
+    """Эмодзи в виде перечисления для более безопасного использования"""
     SETTINGS = "⚙️"
     CREATE = "🎨"
     BACK = "◀️"
@@ -14,9 +14,8 @@ class Emoji:
     SUCCESS = "✅"
     EDIT = "✏️"
 
-@dataclass
-class CallbackData:
-    """Константы для колбэков"""
+class CallbackEnum(str, Enum):
+    """Колбэки в виде перечисления для более безопасного использования"""
     SETTINGS = "settings"
     GENERATE = "generate"
     SIZE_PREFIX = "size_"
@@ -27,8 +26,15 @@ class CallbackData:
     STYLE_PREFIX = "style_"
     REGENERATE = "regenerate"
 
-# Доступные размеры изображений
-IMAGE_SIZES: Dict[str, Dict[str, Any]] = {
+# Константы для размеров изображений
+class ImageSize:
+    """Константы для размеров изображений"""
+    MIN_SIZE: Final[int] = 64
+    MAX_SIZE: Final[int] = 2048
+    DEFAULT_SIZE: Final[int] = 1024
+
+# Размеры изображений с валидацией
+IMAGE_SIZES: Final[Dict[str, Dict[str, Any]]] = {
     "square": {
         "width": 1024,
         "height": 1024,
@@ -46,42 +52,73 @@ IMAGE_SIZES: Dict[str, Dict[str, Any]] = {
     }
 }
 
-# Стили изображений
-IMAGE_STYLES: Dict[str, Dict[str, Any]] = {
-    "DEFAULT": {
+# Проверка корректности размеров
+for size_config in IMAGE_SIZES.values():
+    if not (ImageSize.MIN_SIZE <= size_config["width"] <= ImageSize.MAX_SIZE and
+            ImageSize.MIN_SIZE <= size_config["height"] <= ImageSize.MAX_SIZE):
+        raise ValueError(f"Invalid image size configuration: {size_config}")
+
+class StyleType(Enum):
+    """Типы стилей для изображений"""
+    DEFAULT = auto()
+    ANIME = auto()
+    REALISTIC = auto()
+    ARTISTIC = auto()
+    RETRO = auto()
+
+# Стили изображений с валидацией
+IMAGE_STYLES: Final[Dict[str, Dict[str, Any]]] = {
+    StyleType.DEFAULT.name: {
         "label": "Обычный",
         "prompt_prefix": "",
         "description": "Стандартный стиль без дополнительных модификаций",
         "model_id": 1
     },
-    "ANIME": {
+    StyleType.ANIME.name: {
         "label": "Аниме",
-        "prompt_prefix": "anime style, manga art, japanese animation, ",
+        "prompt_prefix": "anime style, manga, japanese animation, ",
         "description": "Аниме стиль",
         "model_id": 1
     },
-    "CYBERPUNK": {
-        "label": "Киберпанк",
-        "prompt_prefix": "cyberpunk style, neon lights, futuristic, high tech, ",
-        "description": "Киберпанк стиль",
+    StyleType.REALISTIC.name: {
+        "label": "Реалистичный",
+        "prompt_prefix": "photorealistic, highly detailed, sharp focus, ",
+        "description": "Реалистичный стиль",
         "model_id": 1
     },
-    "WATERCOLOR": {
-        "label": "Акварель",
-        "prompt_prefix": "watercolor painting style, soft colors, artistic, ",
-        "description": "Акварельный стиль",
+    StyleType.ARTISTIC.name: {
+        "label": "Художественный",
+        "prompt_prefix": "artistic style, creative, expressive, ",
+        "description": "Художественный стиль",
         "model_id": 1
     },
-    "OIL_PAINTING": {
-        "label": "Масло",
-        "prompt_prefix": "oil painting style, textured, classical art, ",
-        "description": "Масляная живопись",
-        "model_id": 1
-    },
-    "RETRO": {
+    StyleType.RETRO.name: {
         "label": "Ретро",
         "prompt_prefix": "retro style, vintage aesthetics, old school design, nostalgic feel, ",
         "description": "Ретро стиль",
         "model_id": 1
     }
 }
+
+# Проверка корректности стилей
+required_style_keys = {"label", "prompt_prefix", "description", "model_id"}
+for style_name, style_config in IMAGE_STYLES.items():
+    if not all(key in style_config for key in required_style_keys):
+        raise ValueError(f"Invalid style configuration for {style_name}")
+    if not isinstance(style_config["model_id"], int):
+        raise ValueError(f"Invalid model_id for style {style_name}")
+
+# Константы для API
+class APIConstants:
+    """Константы для работы с API"""
+    MAX_RETRIES: Final[int] = 3
+    TIMEOUT: Final[int] = 30
+    MAX_PROMPT_LENGTH: Final[int] = 500
+    BASE_URL: Final[str] = "https://api-key.fusionbrain.ai"
+
+# Константы для обработки изображений
+class ImageProcessingConstants:
+    """Константы для обработки изображений"""
+    MAX_IMAGE_SIZE: Final[int] = 1500
+    SUPPORTED_FORMATS: Final[tuple] = ("PNG", "JPEG", "JPG", "WEBP")
+    MAX_FILE_SIZE: Final[int] = 10 * 1024 * 1024  # 10MB
