@@ -335,108 +335,106 @@ class Text2ImageAPI:
 
 # Константы для эмодзи
 class Emoji:
-    SETTINGS = "⚙️"
     CREATE = "🎨"
-    BACK = "◀️"
-    HELP = "❓"
-    REMOVE_BG = "🎭"
+    SETTINGS = "⚙️"
+    HELP = "ℹ️"
+    BACK = "↩️"
+    REMOVE_BG = "🖼"
     WAIT = "⏳"
     ERROR = "❌"
     SUCCESS = "✅"
-    EDIT = "✏️"
+    GALLERY = "🗂"
+    STYLE = "🎭"
+    SIZE = "📏"
+    HOME = "🏠"
 
 # Константы для текстов
 class Messages:
     WELCOME = f"""
     🎨 <b>Добро пожаловать в FusionBrain Art Bot!</b>
 
-    Я помогу вам создавать удивительные изображения с помощью нейросети Kandinsky 2.2
+    Этот бот поможет вам создавать изображения с помощью искусственного интеллекта.
 
-    <b>Мои возможности:</b>
-    ✨ Создание изображений по описанию
-    🎭 Удаление фона с изображений
-    📏 Различные размеры (1024x1024, 1024x1536 и др.)
-    🎨 Множество художественных стилей
+    <b>Основные команды:</b>
+    {Emoji.CREATE} Создать - генерация нового изображения
+    {Emoji.STYLE} Стиль - выбор художественного стиля
+    {Emoji.SIZE} Размер - настройка размера изображения
+    {Emoji.REMOVE_BG} Фон - удаление фона с изображения
+    {Emoji.HELP} Помощь - подробная инструкция
 
-    <b>Начать работу:</b>
-    1. Нажмите {Emoji.CREATE} <b>Создать</b>
-    2. Выберите стиль и размер
-    3. Опишите желаемое изображение
-
-    Используйте {Emoji.HELP} для получения подробной справки
+    Нажмите любую кнопку ниже, чтобы начать:
     """
 
     HELP = f"""
-    <b>🎨 Подробное руководство по использованию бота</b>
+    <b>📖 Как пользоваться ботом</b>
 
     <b>1. Создание изображения:</b>
     • Нажмите {Emoji.CREATE} <b>Создать</b>
-    • Выберите стиль изображения
-    • Опишите, что хотите увидеть
+    • Введите описание желаемого изображения
     • Дождитесь результата
 
-    <b>2. Настройка параметров {Emoji.SETTINGS}</b>
-    • Размер: выберите из доступных форматов
-    • Стиль: различные художественные стили
-    
-    <b>3. Работа с результатом:</b>
-    • {Emoji.REMOVE_BG} Удаление фона
-    • 🔄 Повторная генерация
-    • 💾 Сохранение изображения
+    <b>2. Настройка изображения:</b>
+    • {Emoji.STYLE} <b>Стиль</b> - выбор художественного стиля
+    • {Emoji.SIZE} <b>Размер</b> - выбор размера изображения
+    • {Emoji.REMOVE_BG} <b>Фон</b> - удаление фона
 
-    <b>4. Советы по описанию:</b>
-    • Используйте детальные описания
-    • Указывайте стиль, цвета, настроение
-    • Пример: "Космический кит плывет среди звезд, неоновые цвета"
+    <b>3. Советы по описанию:</b>
+    • Будьте конкретны в деталях
+    • Указывайте цвета и настроение
+    • Описывайте композицию
+
+    <b>Примеры описаний:</b>
+    "Закат на море, оранжевое небо, спокойные волны"
+    "Космический корабль в стиле киберпанк"
+    "Портрет девушки в стиле аниме"
     """
 
     PROMPT = f"""
-    {Emoji.EDIT} <b>Создание изображения</b>
+    {Emoji.CREATE} <b>Создание изображения</b>
 
     <b>Текущие настройки:</b>
-    🎨 Стиль: <b>{{style}}</b>
-    📏 Размер: <b>{{size}}</b>
+    {Emoji.STYLE} Стиль: <b>{{style}}</b>
+    {Emoji.SIZE} Размер: <b>{{size}}</b>
 
-    <b>Опишите ваше изображение:</b>
-    Чем подробнее описание, тем лучше результат!
-
-    <b>Рекомендации:</b>
-    • Описывайте детали и атмосферу
-    • Указывайте цвета и освещение
-    • Добавляйте художественные элементы
-
-    <b>Примеры:</b>
-    🌌 "Космический корабль в стиле киберпанк, неоновое освещение"
-    🎨 "Яркий закат на море, импрессионизм, теплые тона"
-    🐱 "Котенок играет с клубком, акварельный стиль, мягкие цвета"
+    ✍️ <b>Опишите желаемое изображение:</b>
     """
 
-    GENERATING = f"{Emoji.WAIT} <b>Генерирую изображение...</b>"
-    REMOVING_BG = f"{Emoji.WAIT} <b>Удаляю фон...</b>"
-    SIZE_CHANGED = f"{Emoji.SUCCESS} Установлен размер: <b>{{size}}</b>"
-    ERROR_GEN = f"{Emoji.ERROR} Ошибка при генерации: {{error}}"
-    ERROR_SIZE = f"{Emoji.ERROR} Ошибка: неверный размер"
-    ERROR_CRITICAL = f"{Emoji.ERROR} Произошла критическая ошибка"
+    GENERATING = f"{Emoji.WAIT} <b>Создаю изображение...</b>\nЭто может занять некоторое время"
+    REMOVING_BG = f"{Emoji.WAIT} <b>Удаляю фон...</b>\nПодождите немного"
+    
+    SIZE_CHANGED = f"{Emoji.SUCCESS} Новый размер: <b>{{size}}</b>"
+    STYLE_CHANGED = f"{Emoji.SUCCESS} Новый стиль: <b>{{style}}</b>"
+    
+    ERROR_GEN = f"{Emoji.ERROR} Ошибка генерации: {{error}}"
+    ERROR_SIZE = f"{Emoji.ERROR} Неверный размер изображения"
+    ERROR_CRITICAL = f"{Emoji.ERROR} Произошла ошибка. Попробуйте позже"
+    
     BG_REMOVED = f"{Emoji.SUCCESS} Фон успешно удален!"
+    
     MAIN_MENU = "Выберите действие:"
-    SETTINGS = f"""{Emoji.SETTINGS} <b>Настройки размера изображения</b>
+    
+    SETTINGS = f"""
+    {Emoji.SIZE} <b>Размер изображения</b>
 
-    📏 Текущий размер: <b>{{width}}x{{height}}</b>
+    Текущий размер: <b>{{width}}x{{height}}</b>
 
     Выберите новый размер:"""
-    STYLES = f"""{Emoji.SETTINGS} <b>Выберите стиль изображения</b>
+    
+    STYLES = f"""
+    {Emoji.STYLE} <b>Стиль изображения</b>
 
-    🎨 Текущий стиль: <b>{{style_label}}</b>
+    Текущий стиль: <b>{{style_label}}</b>
 
     Выберите новый стиль:"""
-    STYLE_CHANGED = f"{Emoji.SUCCESS} Установлен стиль: <b>{{style}}</b>"
+
     CURRENT_SETTINGS = f"""
-    {Emoji.SETTINGS} <b>Текущие настройки</b>
+    {Emoji.CREATE} <b>Создание изображения</b>
 
-    🎨 Стиль: <b>{{style}}</b>
-    📏 Размер: <b>{{size}}</b>
+    <b>Текущие настройки:</b>
+    {Emoji.STYLE} Стиль: <b>{{style}}</b>
+    {Emoji.SIZE} Размер: <b>{{size}}</b>
 
-    {Emoji.EDIT} Опишите желаемое изображение или измените настройки:
+    ✍️ Введите описание желаемого изображения:
     """
 
 # Константы для колбэков
@@ -896,40 +894,54 @@ async def process_remove_background(callback_query: CallbackQuery):
 
 @router.callback_query(F.data == CallbackData.GENERATE)
 async def start_generation(callback_query: CallbackQuery):
-    user_id = callback_query.from_user.id
-    user_states[user_id].awaiting_prompt = True
-    settings = user_settings[user_id]
-    
-    logger.info(f"Пользователь начал процесс генерации", extra={
-        'user_id': user_id,
-        'operation': 'SYSTEM'
-    })
-    
+    """Начинает процесс генерации изображения"""
     try:
-        # Проверяем тип сообщения и используем соответствующий метод
+        user_id = callback_query.from_user.id
+        logger.info(f"Пользователь начал процесс генерации", extra={
+            'user_id': user_id,
+            'operation': 'SYSTEM'
+        })
+
+        user_state = user_states[user_id]
+        user_setting = user_settings[user_id]
+        
+        # Получаем текущий стиль
+        style_info = IMAGE_STYLES[user_setting.style]
+        current_size = f"{user_setting.width}x{user_setting.height}"
+        
+        # Устанавливаем флаг ожидания промпта
+        user_state.awaiting_prompt = True
+        
+        # Отправляем сообщение с текущими настройками
         if callback_query.message.photo:
-            await callback_query.message.edit_caption(
-                caption=Messages.CURRENT_SETTINGS.format(
-                    style=IMAGE_STYLES[settings.style]["label"],
-                    size=f"{settings.width}x{settings.height}"
+            await callback_query.message.answer(
+                text=Messages.CURRENT_SETTINGS.format(
+                    style=style_info['label'],
+                    size=current_size
                 ),
                 reply_markup=get_prompt_keyboard()
             )
         else:
             await callback_query.message.edit_text(
                 text=Messages.CURRENT_SETTINGS.format(
-                    style=IMAGE_STYLES[settings.style]["label"],
-                    size=f"{settings.width}x{settings.height}"
+                    style=style_info['label'],
+                    size=current_size
                 ),
                 reply_markup=get_prompt_keyboard()
             )
+        
         await callback_query.answer()
+        
     except Exception as e:
+        user_id = callback_query.from_user.id if callback_query.from_user else "N/A"
         logger.error(f"Ошибка при начале генерации: {str(e)}", extra={
             'user_id': user_id,
             'operation': 'ERROR'
         })
-        await callback_query.answer("Произошла ошибка. Попробуйте еще раз.")
+        await callback_query.message.edit_text(
+            text=Messages.ERROR_CRITICAL,
+            reply_markup=get_back_keyboard()
+        )
 
 @router.callback_query(F.data == CallbackData.BACK)
 async def back_to_main(callback_query: CallbackQuery):
@@ -1515,111 +1527,87 @@ async def generate_image(message: types.Message):
 
 def get_image_keyboard(image_id: str) -> InlineKeyboardMarkup:
     """Создает клавиатуру для изображения"""
-    keyboard = [
-        [InlineKeyboardButton(
-            text=f"{Emoji.REMOVE_BG} Удалить фон",
-            callback_data=f"{CallbackData.REMOVE_BG}{image_id}"
-        )],
-        [InlineKeyboardButton(
-            text=f"{Emoji.CREATE} Создать новое",
-            callback_data=CallbackData.GENERATE
-        )],
-        [InlineKeyboardButton(
-            text=f"{Emoji.BACK} В главное меню",
-            callback_data=CallbackData.BACK
-        )]
+    buttons = [
+        [
+            InlineKeyboardButton(text=f"{Emoji.CREATE} Создать новое", callback_data=CallbackData.GENERATE),
+            InlineKeyboardButton(text="🔄 Повторить", callback_data=CallbackData.REGENERATE)
+        ],
+        [
+            InlineKeyboardButton(text=f"{Emoji.REMOVE_BG} Удалить фон", callback_data=f"{CallbackData.REMOVE_BG}_{image_id}"),
+            InlineKeyboardButton(text=f"{Emoji.HOME} В начало", callback_data=CallbackData.BACK)
+        ]
     ]
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_main_keyboard() -> InlineKeyboardMarkup:
-    """Создает основную клавиатуру с главным меню"""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"{Emoji.CREATE} Создать", callback_data=CallbackData.GENERATE)],
-        [InlineKeyboardButton(text=f"{Emoji.CREATE} Повторить генерацию", callback_data=CallbackData.REGENERATE)],
-        [InlineKeyboardButton(text=f"{Emoji.SETTINGS} Стили", callback_data=CallbackData.STYLES)],
-        [InlineKeyboardButton(text=f"{Emoji.SETTINGS} Настройки", callback_data=CallbackData.SETTINGS)],
-        [InlineKeyboardButton(text=f"{Emoji.HELP} Помощь", callback_data=CallbackData.HELP)]
-    ])
+    """Создает основную клавиатуру главного меню"""
+    buttons = [
+        [
+            InlineKeyboardButton(text=f"{Emoji.CREATE} Создать", callback_data=CallbackData.GENERATE),
+            InlineKeyboardButton(text=f"{Emoji.STYLE} Стиль", callback_data=CallbackData.STYLES)
+        ],
+        [
+            InlineKeyboardButton(text=f"{Emoji.SIZE} Размер", callback_data=CallbackData.SETTINGS),
+            InlineKeyboardButton(text=f"{Emoji.HELP} Помощь", callback_data=CallbackData.HELP)
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_settings_keyboard() -> InlineKeyboardMarkup:
-    """Создает клавиатуру с настройками размеров"""
-    keyboard = []
-    
-    # Добавляем кнопки для каждого размера
-    for size_key, size_config in IMAGE_SIZES.items():
-        keyboard.append([
-            InlineKeyboardButton(
-                text=f"{size_config['label']} - {size_config['description']}",
-                callback_data=f"{CallbackData.SIZE_PREFIX}{size_key}"
-            )
-        ])
-    
-    # Добавляем кнопку возврата
-    keyboard.append([
-        InlineKeyboardButton(
-            text=f"{Emoji.BACK} В главное меню",
-            callback_data=CallbackData.BACK
+    """Создает клавиатуру настроек размера"""
+    buttons = []
+    row = []
+    for size_name, size_data in IMAGE_SIZES.items():
+        button = InlineKeyboardButton(
+            text=f"{size_data['width']}x{size_data['height']}",
+            callback_data=f"{CallbackData.SIZE_PREFIX}{size_name}"
         )
-    ])
+        row.append(button)
+        if len(row) == 2:
+            buttons.append(row)
+            row = []
     
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+    if row:  # Добавляем оставшиеся кнопки
+        buttons.append(row)
+    
+    buttons.append([InlineKeyboardButton(text=f"{Emoji.BACK} Назад", callback_data=CallbackData.BACK)])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_styles_keyboard() -> InlineKeyboardMarkup:
-    """Создает клавиатуру с выбором стилей"""
-    keyboard = []
-    
-    # Создаем кнопки для каждого стиля, по 2 в ряд
-    current_row = []
-    for style_id, style_info in IMAGE_STYLES.items():
+    """Создает клавиатуру выбора стилей"""
+    buttons = []
+    row = []
+    for style_name, style_data in IMAGE_STYLES.items():
         button = InlineKeyboardButton(
-            text=style_info["label"],
-            callback_data=f"{CallbackData.STYLE_PREFIX}{style_id}"
+            text=style_data['label'],
+            callback_data=f"{CallbackData.STYLE_PREFIX}{style_name}"
         )
-        current_row.append(button)
-        
-        if len(current_row) == 2:
-            keyboard.append(current_row)
-            current_row = []
+        row.append(button)
+        if len(row) == 2:
+            buttons.append(row)
+            row = []
     
-    # Добавляем оставшиеся кнопки, если есть
-    if current_row:
-        keyboard.append(current_row)
+    if row:  # Добавляем оставшиеся кнопки
+        buttons.append(row)
     
-    # Добавляем кнопку "Назад"
-    keyboard.append([
-        InlineKeyboardButton(
-            text=f"{Emoji.BACK} Назад",
-            callback_data=CallbackData.BACK
-        )
-    ])
-    
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+    buttons.append([InlineKeyboardButton(text=f"{Emoji.BACK} Назад", callback_data=CallbackData.BACK)])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_prompt_keyboard() -> InlineKeyboardMarkup:
     """Создает клавиатуру для режима ввода промпта"""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text=f"{Emoji.SETTINGS} Стиль",
-            callback_data=CallbackData.STYLES
-        )],
-        [InlineKeyboardButton(
-            text=f"{Emoji.SETTINGS} Размер",
-            callback_data=CallbackData.SETTINGS
-        )],
-        [InlineKeyboardButton(
-            text=f"{Emoji.BACK} В главное меню",
-            callback_data=CallbackData.BACK
-        )]
-    ])
+    buttons = [
+        [
+            InlineKeyboardButton(text=f"{Emoji.STYLE} Стиль", callback_data=CallbackData.STYLES),
+            InlineKeyboardButton(text=f"{Emoji.SIZE} Размер", callback_data=CallbackData.SETTINGS)
+        ],
+        [InlineKeyboardButton(text=f"{Emoji.BACK} Назад", callback_data=CallbackData.BACK)]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_back_keyboard() -> InlineKeyboardMarkup:
-    """Создает клавиатуру для возврата"""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text=f"{Emoji.BACK} В главное меню",
-            callback_data=CallbackData.BACK
-        )]
-    ])
+    """Создает клавиатуру с кнопкой возврата"""
+    buttons = [[InlineKeyboardButton(text=f"{Emoji.BACK} Назад", callback_data=CallbackData.BACK)]]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 async def main():
     """Запуск бота"""
