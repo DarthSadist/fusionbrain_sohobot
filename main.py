@@ -335,10 +335,12 @@ class Text2ImageAPI:
 
 # Константы для эмодзи
 class Emoji:
-    CREATE = "🎨"
+    """Эмодзи для кнопок и сообщений"""
     SETTINGS = "⚙️"
-    HELP = "ℹ️"
     BACK = "↩️"
+    CREATE = "🎨"
+    HELP = "❓"
+    CHECK = "✅"
     REMOVE_BG = "🖼"
     WAIT = "⏳"
     ERROR = "❌"
@@ -350,104 +352,101 @@ class Emoji:
 
 # Константы для текстов
 class Messages:
-    WELCOME = f"""
-    🎨 <b>Добро пожаловать в FusionBrain Art Bot!</b>
-
-    Этот бот поможет вам создавать изображения с помощью искусственного интеллекта.
-
-    <b>Основные команды:</b>
-    {Emoji.CREATE} Создать - генерация нового изображения
-    {Emoji.STYLE} Стиль - выбор художественного стиля
-    {Emoji.SIZE} Размер - настройка размера изображения
-    {Emoji.REMOVE_BG} Фон - удаление фона с изображения
-    {Emoji.HELP} Помощь - подробная инструкция
-
-    Нажмите любую кнопку ниже, чтобы начать:
-    """
-
-    HELP = f"""
-    <b>📖 Как пользоваться ботом</b>
-
-    <b>1. Создание изображения:</b>
-    • Нажмите {Emoji.CREATE} <b>Создать</b>
-    • Введите описание желаемого изображения
-    • Дождитесь результата
-
-    <b>2. Настройка изображения:</b>
-    • {Emoji.STYLE} <b>Стиль</b> - выбор художественного стиля
-    • {Emoji.SIZE} <b>Размер</b> - выбор размера изображения
-    • {Emoji.REMOVE_BG} <b>Фон</b> - удаление фона
-
-    <b>3. Советы по описанию:</b>
-    • Будьте конкретны в деталях
-    • Указывайте цвета и настроение
-    • Описывайте композицию
-
-    <b>Примеры описаний:</b>
-    "Закат на море, оранжевое небо, спокойные волны"
-    "Космический корабль в стиле киберпанк"
-    "Портрет девушки в стиле аниме"
-    """
-
-    PROMPT = f"""
-    {Emoji.CREATE} <b>Создание изображения</b>
-
-    <b>Текущие настройки:</b>
-    {Emoji.STYLE} Стиль: <b>{{style}}</b>
-    {Emoji.SIZE} Размер: <b>{{size}}</b>
-
-    ✍️ <b>Опишите желаемое изображение:</b>
-    """
-
-    GENERATING = f"{Emoji.WAIT} <b>Создаю изображение...</b>\nЭто может занять некоторое время"
-    REMOVING_BG = f"{Emoji.WAIT} <b>Удаляю фон...</b>\nПодождите немного"
+    """Шаблоны сообщений бота"""
+    WELCOME = (
+        "Привет! Я бот для генерации изображений.\n\n"
+        "🎨 Текущий стиль: <b>{current_style}</b>\n"
+        "Нажмите кнопку <b>Создать</b>, чтобы начать."
+    )
     
-    SIZE_CHANGED = f"{Emoji.SUCCESS} Новый размер: <b>{{size}}</b>"
-    STYLE_CHANGED = f"{Emoji.SUCCESS} Новый стиль: <b>{{style}}</b>"
+    PROMPT = (
+        "Опишите изображение, которое хотите создать.\n\n"
+        "🎨 Стиль: <b>{style}</b>\n"
+        "📏 Размер: <b>{size}</b>"
+    )
     
-    ERROR_GEN = f"{Emoji.ERROR} Ошибка генерации: {{error}}"
-    ERROR_SIZE = f"{Emoji.ERROR} Неверный размер изображения"
-    ERROR_CRITICAL = f"{Emoji.ERROR} Произошла ошибка. Попробуйте позже"
+    GENERATING = (
+        "⏳ <b>Генерация изображения...</b>\n\n"
+        "Это может занять некоторое время."
+    )
     
-    BG_REMOVED = f"{Emoji.SUCCESS} Фон успешно удален!"
+    REMOVING_BG = (
+        "⏳ <b>Удаление фона...</b>\n\n"
+        "Это может занять некоторое время."
+    )
+    
+    REMOVE_BG_SUCCESS = (
+        "✅ <b>Фон успешно удален!</b>"
+    )
+    
+    REMOVE_BG_ERROR = (
+        "❌ <b>Ошибка при удалении фона</b>\n\n"
+        "{error}"
+    )
+    
+    ERROR_GEN = (
+        "❌ <b>Ошибка при генерации изображения</b>\n\n"
+        "{error}"
+    )
+    
+    ERROR_CRITICAL = (
+        "❌ Произошла критическая ошибка.\n"
+        "Попробуйте еще раз или обратитесь к администратору."
+    )
+    
+    HELP = (
+        "<b>Как пользоваться ботом:</b>\n\n"
+        "1. Нажмите кнопку <b>Создать</b>\n"
+        "2. Введите описание желаемого изображения\n"
+        "3. Дождитесь результата\n\n"
+        "<b>Дополнительные возможности:</b>\n"
+        "• <b>Стили</b> - выбор стиля изображения\n"
+        "• <b>Настройки</b> - изменение размера изображения\n"
+        "• <b>Повторить</b> - повторная генерация с тем же промптом\n"
+        "• <b>Удалить фон</b> - удаление фона с изображения"
+    )
+    
+    STYLES = (
+        "🎨 <b>Выберите стиль изображения</b>\n\n"
+        "Текущий стиль: <b>{current_style}</b>"
+    )
+    
+    STYLE_CHANGED = (
+        "✅ <b>Стиль изменен</b>\n\n"
+        "Текущий стиль: <b>{style}</b>"
+    )
+    
+    SETTINGS = (
+        "⚙️ <b>Настройки</b>\n\n"
+        "Текущий размер: <b>{current_size}</b>"
+    )
+    
+    SIZE_CHANGED = (
+        "✅ <b>Размер изменен</b>\n\n"
+        "Текущий размер: <b>{size}</b>"
+    )
     
     MAIN_MENU = "Выберите действие:"
     
-    SETTINGS = f"""
-    {Emoji.SIZE} <b>Размер изображения</b>
-
-    Текущий размер: <b>{{width}}x{{height}}</b>
-
-    Выберите новый размер:"""
-    
-    STYLES = f"""
-    {Emoji.STYLE} <b>Стиль изображения</b>
-
-    Текущий стиль: <b>{{style_label}}</b>
-
-    Выберите новый стиль:"""
-
-    CURRENT_SETTINGS = f"""
-    {Emoji.CREATE} <b>Создание изображения</b>
-
-    <b>Текущие настройки:</b>
-    {Emoji.STYLE} Стиль: <b>{{style}}</b>
-    {Emoji.SIZE} Размер: <b>{{size}}</b>
-
-    ✍️ Введите описание желаемого изображения:
-    """
+    CURRENT_SETTINGS = (
+        "🎨 <b>Создание изображения</b>\n\n"
+        "🎨 Стиль: <b>{style}</b>\n"
+        "📏 Размер: <b>{size}</b>\n"
+        "✍️ Введите описание желаемого изображения:"
+    )
 
 # Константы для колбэков
 class CallbackData:
+    """Callback-данные для кнопок"""
+    BACK = "back"
     SETTINGS = "settings"
+    STYLES = "styles"
     GENERATE = "generate"
-    SIZE_PREFIX = "size_"
+    REGENERATE = "regenerate"
+    STYLE_PREFIX = "style_"
     HELP = "help"
-    BACK = "back_to_main"
     REMOVE_BG = "remove_bg"
-    STYLES = "styles"  # Новый callback для меню стилей
-    STYLE_PREFIX = "style_"  # Префикс для выбора стиля
-    REGENERATE = "regenerate"  # Новый callback для повторной генерации
+    SIZE_PREFIX = "size_"
 
 # Доступные размеры изображений
 IMAGE_SIZES = {
@@ -697,13 +696,18 @@ class ImageProcessor:
                         extra={'operation': 'REMOVE_BG_ERROR'})
             raise
 
+from aiogram.filters.callback_data import CallbackData as BaseCallbackData
+
+class StyleCallback(BaseCallbackData, prefix="style"):
+    style: str
+
 @router.message(Command("start"))
 async def send_welcome(message: types.Message):
     """Обработчик команды /start"""
     try:
         await message.answer(
-            Messages.WELCOME,
-            reply_markup=get_main_keyboard(),
+            Messages.WELCOME.format(current_style=IMAGE_STYLES[user_settings[message.from_user.id].style]['label']),
+            reply_markup=get_main_keyboard(message.from_user.id),
             parse_mode=ParseMode.HTML
         )
     except Exception as e:
@@ -726,13 +730,13 @@ async def show_help(callback_query: CallbackQuery):
         if callback_query.message.photo:
             await callback_query.message.edit_caption(
                 caption=Messages.HELP,
-                reply_markup=get_back_keyboard(),
+                reply_markup=get_back_keyboard(user_id),
                 parse_mode=ParseMode.HTML
             )
         else:
             await callback_query.message.edit_text(
                 text=Messages.HELP,
-                reply_markup=get_back_keyboard(),
+                reply_markup=get_back_keyboard(user_id),
                 parse_mode=ParseMode.HTML
             )
         await callback_query.answer()
@@ -754,18 +758,16 @@ async def show_settings(callback_query: CallbackQuery):
         if callback_query.message.photo:
             await callback_query.message.edit_caption(
                 caption=Messages.SETTINGS.format(
-                    width=settings.width,
-                    height=settings.height
+                    current_size=f"{settings.width}x{settings.height}"
                 ),
-                reply_markup=get_settings_keyboard()
+                reply_markup=get_settings_keyboard(user_id)
             )
         else:
             await callback_query.message.edit_text(
                 text=Messages.SETTINGS.format(
-                    width=settings.width,
-                    height=settings.height
+                    current_size=f"{settings.width}x{settings.height}"
                 ),
-                reply_markup=get_settings_keyboard()
+                reply_markup=get_settings_keyboard(user_id)
             )
         await callback_query.answer()
     except Exception as e:
@@ -778,44 +780,60 @@ async def show_settings(callback_query: CallbackQuery):
 @router.callback_query(F.data.startswith(CallbackData.SIZE_PREFIX))
 async def process_size_change(callback_query: CallbackQuery):
     """Обработчик изменения размера изображения"""
+    user_id = callback_query.from_user.id
+    size_key = callback_query.data.replace(CallbackData.SIZE_PREFIX, "")
+    
     try:
-        user_id = callback_query.from_user.id
-        size_key = callback_query.data.replace(CallbackData.SIZE_PREFIX, "")
-        size_config = IMAGE_SIZES.get(size_key)
-        
-        if not size_config:
+        # Получаем размеры из словаря
+        size_data = IMAGE_SIZES.get(size_key)
+        if not size_data:
             logger.error(f"Неверный размер: {size_key}", extra={
                 'user_id': user_id,
-                'operation': 'SIZE_ERROR'
+                'operation': 'INVALID_SIZE'
             })
-            await callback_query.answer(Messages.ERROR_SIZE)
+            await callback_query.answer(Messages.ERROR_SIZE, show_alert=True)
             return
+
+        # Обновляем настройки пользователя
+        user_settings[user_id].width = size_data["width"]
+        user_settings[user_id].height = size_data["height"]
         
-        user_settings[user_id].width = size_config["width"]
-        user_settings[user_id].height = size_config["height"]
+        size_label = f"{size_data['width']}x{size_data['height']}"
         
-        logger.info(f"Изменен размер изображения: {size_config['label']}", extra={
+        logger.info(f"Изменен размер изображения", extra={
             'user_id': user_id,
-            'operation': 'SIZE_CHANGE'
+            'operation': 'SIZE_CHANGED',
+            'new_size': size_label
         })
+
+        # Если есть последний промпт, добавляем кнопку регенерации
+        keyboard = InlineKeyboardBuilder()
+        keyboard.button(text=f"{Emoji.BACK} Назад", callback_data=CallbackData.BACK)
         
+        if user_states[user_id].last_prompt:
+            keyboard.button(text=f"{Emoji.CREATE} Повторить", callback_data=CallbackData.REGENERATE)
+        
+        keyboard.adjust(2)
+
         if callback_query.message.photo:
             await callback_query.message.edit_caption(
-                caption=Messages.SIZE_CHANGED.format(size=size_config['label']),
-                reply_markup=get_main_keyboard()
+                caption=Messages.SIZE_CHANGED.format(size=size_label),
+                reply_markup=keyboard.as_markup(),
+                parse_mode=ParseMode.HTML
             )
         else:
             await callback_query.message.edit_text(
-                text=Messages.SIZE_CHANGED.format(size=size_config['label']),
-                reply_markup=get_main_keyboard()
+                text=Messages.SIZE_CHANGED.format(size=size_label),
+                reply_markup=keyboard.as_markup(),
+                parse_mode=ParseMode.HTML
             )
-        await callback_query.answer()
+        
     except Exception as e:
         logger.error(f"Ошибка при изменении размера: {str(e)}", extra={
-            'user_id': user_id if 'user_id' in locals() else 'N/A',
-            'operation': 'SIZE_ERROR'
+            'user_id': user_id,
+            'operation': 'SIZE_CHANGE_ERROR'
         })
-        await callback_query.answer("Произошла ошибка. Попробуйте еще раз.")
+        await callback_query.answer(Messages.ERROR_CRITICAL, show_alert=True)
 
 @router.callback_query(F.data.startswith(CallbackData.REMOVE_BG))
 async def process_remove_background(callback_query: CallbackQuery):
@@ -837,10 +855,16 @@ async def process_remove_background(callback_query: CallbackQuery):
             return
 
         # Отправляем сообщение о начале обработки
-        await callback_query.message.edit_caption(
-            caption=Messages.REMOVING_BG,
-            reply_markup=None
-        )
+        if callback_query.message.photo:
+            await callback_query.message.edit_caption(
+                caption=Messages.REMOVING_BG,
+                reply_markup=None
+            )
+        else:
+            await callback_query.message.edit_text(
+                text=Messages.REMOVING_BG,
+                reply_markup=None
+            )
 
         try:
             # Удаляем фон в отдельном потоке
@@ -857,14 +881,24 @@ async def process_remove_background(callback_query: CallbackQuery):
             user_states[user_id].last_image_id = image_id
 
             # Отправляем обработанное изображение
-            await callback_query.message.answer_photo(
-                BufferedInputFile(
-                    result_image,
-                    filename=f"nobg_{image_id}.png"
-                ),
-                caption=Messages.BG_REMOVED,
-                reply_markup=get_image_keyboard(image_id)
-            )
+            if callback_query.message.photo:
+                await callback_query.message.answer_photo(
+                    BufferedInputFile(
+                        result_image,
+                        filename=f"nobg_{image_id}.png"
+                    ),
+                    caption=Messages.REMOVE_BG_SUCCESS,
+                    reply_markup=get_image_keyboard(image_id, user_id)
+                )
+            else:
+                await callback_query.message.answer_photo(
+                    BufferedInputFile(
+                        result_image,
+                        filename=f"nobg_{image_id}.png"
+                    ),
+                    caption=Messages.REMOVE_BG_SUCCESS,
+                    reply_markup=get_image_keyboard(image_id, user_id)
+                )
 
             # Удаляем старое сообщение
             await callback_query.message.delete()
@@ -880,10 +914,16 @@ async def process_remove_background(callback_query: CallbackQuery):
                 'user_id': user_id,
                 'operation': 'REMOVE_BG_ERROR'
             })
-            await callback_query.message.edit_caption(
-                caption=Messages.ERROR_GEN.format(error=error_message),
-                reply_markup=get_image_keyboard(user_states[user_id].last_image_id)
-            )
+            if callback_query.message.photo:
+                await callback_query.message.edit_caption(
+                    caption=Messages.ERROR_GEN.format(error=error_message),
+                    reply_markup=get_image_keyboard(user_states[user_id].last_image_id, user_id)
+                )
+            else:
+                await callback_query.message.edit_text(
+                    text=Messages.ERROR_GEN.format(error=error_message),
+                    reply_markup=get_image_keyboard(user_states[user_id].last_image_id, user_id)
+                )
 
     except Exception as e:
         logger.error(f"Критическая ошибка в process_remove_background: {str(e)}", extra={
@@ -919,7 +959,7 @@ async def start_generation(callback_query: CallbackQuery):
                     style=style_info['label'],
                     size=current_size
                 ),
-                reply_markup=get_prompt_keyboard()
+                reply_markup=get_prompt_keyboard(user_id)
             )
         else:
             await callback_query.message.edit_text(
@@ -927,7 +967,7 @@ async def start_generation(callback_query: CallbackQuery):
                     style=style_info['label'],
                     size=current_size
                 ),
-                reply_markup=get_prompt_keyboard()
+                reply_markup=get_prompt_keyboard(user_id)
             )
         
         await callback_query.answer()
@@ -940,7 +980,7 @@ async def start_generation(callback_query: CallbackQuery):
         })
         await callback_query.message.edit_text(
             text=Messages.ERROR_CRITICAL,
-            reply_markup=get_back_keyboard()
+            reply_markup=get_back_keyboard(user_id)
         )
 
 @router.callback_query(F.data == CallbackData.BACK)
@@ -949,12 +989,12 @@ async def back_to_main(callback_query: CallbackQuery):
         if callback_query.message.photo:
             await callback_query.message.edit_caption(
                 caption=Messages.MAIN_MENU,
-                reply_markup=get_main_keyboard()
+                reply_markup=get_main_keyboard(callback_query.from_user.id)
             )
         else:
             await callback_query.message.edit_text(
                 text=Messages.MAIN_MENU,
-                reply_markup=get_main_keyboard()
+                reply_markup=get_main_keyboard(callback_query.from_user.id)
             )
         await callback_query.answer()
     except Exception as e:
@@ -963,86 +1003,154 @@ async def back_to_main(callback_query: CallbackQuery):
 
 @router.callback_query(F.data == CallbackData.STYLES)
 async def show_styles(callback_query: CallbackQuery):
+    """Показывает меню выбора стиля"""
+    user_id = callback_query.from_user.id
+    
     try:
-        user_id = callback_query.from_user.id
-        current_style = user_settings[user_id].style
-        style_label = IMAGE_STYLES[current_style]["label"]
-        
-        logger.info(f"Пользователь открыл меню стилей", extra={
+        logger.info("Открытие меню стилей", extra={
             'user_id': user_id,
             'operation': 'STYLES'
         })
         
+        # Получаем текущий стиль
+        current_style = user_settings[user_id].style
+        style_label = IMAGE_STYLES[current_style]["label"]
+        
+        logger.info("Текущий стиль", extra={
+            'user_id': user_id,
+            'operation': 'CURRENT_STYLE',
+            'style_key': current_style,
+            'style_label': style_label
+        })
+        
+        # Формируем текст сообщения
+        message_text = Messages.STYLES.format(current_style=style_label)
+        
+        # Проверяем тип сообщения и редактируем соответственно
         if callback_query.message.photo:
+            logger.info("Редактирование подписи фото", extra={
+                'user_id': user_id,
+                'operation': 'EDIT_PHOTO_CAPTION'
+            })
             await callback_query.message.edit_caption(
-                caption=Messages.STYLES.format(style_label=style_label),
-                reply_markup=get_styles_keyboard()
+                caption=message_text,
+                reply_markup=get_styles_keyboard(user_id),
+                parse_mode=ParseMode.HTML
             )
         else:
+            logger.info("Редактирование текстового сообщения", extra={
+                'user_id': user_id,
+                'operation': 'EDIT_TEXT_MESSAGE'
+            })
             await callback_query.message.edit_text(
-                text=Messages.STYLES.format(style_label=style_label),
-                reply_markup=get_styles_keyboard()
+                text=message_text,
+                reply_markup=get_styles_keyboard(user_id),
+                parse_mode=ParseMode.HTML
             )
+        
         await callback_query.answer()
+        
     except Exception as e:
         logger.error(f"Ошибка при показе стилей: {str(e)}", extra={
-            'user_id': user_id if 'user_id' in locals() else 'N/A',
-            'operation': 'STYLES_ERROR'
+            'user_id': user_id,
+            'operation': 'STYLES_ERROR',
+            'error': str(e)
         })
-        await callback_query.answer("Произошла ошибка. Попробуйте еще раз.")
+        
+        # Если не удалось отредактировать, отправляем новое сообщение
+        try:
+            logger.info("Попытка отправки нового сообщения", extra={
+                'user_id': user_id,
+                'operation': 'SEND_NEW_MESSAGE'
+            })
+            await callback_query.message.answer(
+                Messages.STYLES.format(current_style=style_label),
+                reply_markup=get_styles_keyboard(user_id),
+                parse_mode=ParseMode.HTML
+            )
+            # Удаляем старое сообщение
+            await callback_query.message.delete()
+        except Exception as send_error:
+            logger.error(f"Не удалось отправить новое сообщение: {str(send_error)}", extra={
+                'user_id': user_id,
+                'operation': 'SEND_NEW_MESSAGE_ERROR',
+                'error': str(send_error)
+            })
+            await callback_query.answer(
+                text="❌ Не удалось показать стили",
+                show_alert=True
+            )
 
 @router.callback_query(F.data.startswith(CallbackData.STYLE_PREFIX))
 async def process_style_change(callback_query: CallbackQuery):
     """Обработчик изменения стиля изображения"""
+    user_id = callback_query.from_user.id
+    style_key = callback_query.data.replace(CallbackData.STYLE_PREFIX, "")
+    
+    logger.info("Получен callback изменения стиля", extra={
+        'user_id': user_id,
+        'operation': 'STYLE_CALLBACK_RECEIVED',
+        'callback_data': callback_query.data,
+        'style_key': style_key
+    })
+    
     try:
-        user_id = callback_query.from_user.id
-        style_key = callback_query.data.replace(CallbackData.STYLE_PREFIX, "")
-        
+        # Проверяем существование стиля
         if style_key not in IMAGE_STYLES:
             logger.error(f"Неверный стиль: {style_key}", extra={
                 'user_id': user_id,
-                'operation': 'STYLE_ERROR'
+                'operation': 'INVALID_STYLE'
             })
-            await callback_query.answer("❌ Ошибка: неверный стиль")
+            await callback_query.answer(
+                text="❌ Неверный стиль",
+                show_alert=True
+            )
             return
-            
-        user_settings[user_id].style = style_key
-        style_info = IMAGE_STYLES[style_key]
         
-        logger.info(f"Изменен стиль изображения: {style_info['label']}", extra={
+        # Обновляем стиль в настройках пользователя
+        user_settings[user_id].style = style_key
+        style_label = IMAGE_STYLES[style_key]["label"]
+        
+        logger.info("Стиль успешно изменен", extra={
             'user_id': user_id,
-            'operation': 'STYLE_CHANGE'
+            'operation': 'STYLE_CHANGED',
+            'new_style': style_key,
+            'style_label': style_label
         })
         
-        message_text = (
-            f"{Emoji.SUCCESS} Выбран стиль: <b>{style_info['label']}</b>\n"
-            f"\n"
-            f"<i>{style_info['description']}</i>"
-        )
-        
+        # Отправляем новое сообщение
         if callback_query.message.photo:
-            await callback_query.message.edit_caption(
-                caption=message_text,
-                reply_markup=get_prompt_keyboard(),
+            await callback_query.message.answer(
+                Messages.STYLE_CHANGED.format(style=style_label),
+                reply_markup=get_styles_keyboard(user_id),
                 parse_mode=ParseMode.HTML
             )
         else:
-            await callback_query.message.edit_text(
-                text=message_text,
-                reply_markup=get_prompt_keyboard(),
+            await callback_query.message.answer(
+                Messages.STYLE_CHANGED.format(style=style_label),
+                reply_markup=get_styles_keyboard(user_id),
                 parse_mode=ParseMode.HTML
             )
         
-        # Устанавливаем флаг ожидания промпта
-        user_states[callback_query.from_user.id].awaiting_prompt = True
-        await callback_query.answer()
+        # Удаляем старое сообщение
+        await callback_query.message.delete()
+        
+        # Подтверждаем callback
+        await callback_query.answer(
+            text=f"✅ Стиль изменен на {style_label}",
+            show_alert=False
+        )
         
     except Exception as e:
         logger.error(f"Ошибка при изменении стиля: {str(e)}", extra={
-            'user_id': user_id if 'user_id' in locals() else 'N/A',
-            'operation': 'STYLE_ERROR'
+            'user_id': user_id,
+            'operation': 'STYLE_CHANGE_ERROR',
+            'error': str(e)
         })
-        await callback_query.answer("Произошла ошибка. Попробуйте еще раз.")
+        await callback_query.answer(
+            text="❌ Не удалось изменить стиль",
+            show_alert=True
+        )
 
 @router.callback_query(F.data == CallbackData.REGENERATE)
 async def regenerate_image(callback_query: CallbackQuery):
@@ -1076,7 +1184,7 @@ async def regenerate_image(callback_query: CallbackQuery):
         # Отправляем сообщение о начале генерации
         status_message = await callback_query.message.answer(
             Messages.GENERATING,
-            reply_markup=get_back_keyboard(),
+            reply_markup=get_back_keyboard(user_id),
             parse_mode=ParseMode.HTML
         )
 
@@ -1091,7 +1199,7 @@ async def regenerate_image(callback_query: CallbackQuery):
             })
             await status_message.edit_text(
                 "⚠️ Ошибка конфигурации: отсутствуют ключи API. Обратитесь к администратору.",
-                reply_markup=get_back_keyboard()
+                reply_markup=get_back_keyboard(user_id)
             )
             return
 
@@ -1126,13 +1234,13 @@ async def regenerate_image(callback_query: CallbackQuery):
             
             # Проверяем статус генерации
             await check_generation_status(api, uuid, status_message, user_id)
-            
+
         except Exception as e:
             error_msg = str(e)
-            logger.error(f"Ошибка при генерации: {error_msg}", extra={
+            logger.error(f"Ошибка при генерации: {str(e)}", extra={
                 'user_id': user_id,
                 'operation': 'GENERATION_ERROR',
-                'error': error_msg
+                'error': str(e)
             })
             
             # Преобразуем технические ошибки в понятные пользователю сообщения
@@ -1150,7 +1258,8 @@ async def regenerate_image(callback_query: CallbackQuery):
             
             await status_message.edit_text(
                 Messages.ERROR_GEN.format(error=user_message),
-                reply_markup=get_back_keyboard()
+                reply_markup=get_back_keyboard(user_id),
+                parse_mode=ParseMode.HTML
             )
             return
         
@@ -1166,20 +1275,40 @@ async def regenerate_image(callback_query: CallbackQuery):
             show_alert=True
         )
 
-async def generate_image_with_prompt(message: types.Message, prompt: str):
+@router.message(F.text)
+async def handle_text(message: types.Message):
+    """Обработчик текстовых сообщений для генерации изображений"""
     user_id = message.from_user.id
-    logger.info("Начало генерации изображения", extra={
+    
+    logger.info("Получено текстовое сообщение", extra={
         'user_id': user_id,
-        'operation': 'GENERATION_START',
-        'prompt': prompt
+        'operation': 'TEXT_RECEIVED',
+        'text': message.text
+    })
+    
+    # Проверяем состояние ожидания промпта
+    user_state = user_states[user_id]
+    if not user_state.awaiting_prompt:
+        logger.warning("Получен текст без ожидания промпта", extra={
+            'user_id': user_id,
+            'operation': 'UNEXPECTED_TEXT',
+            'text': message.text,
+            'awaiting_prompt': user_state.awaiting_prompt
+        })
+        await message.answer(
+            "Для генерации изображения нажмите кнопку 'Создать' и введите описание изображения.",
+            reply_markup=get_main_keyboard(user_id)
+        )
+        return
+
+    logger.info("Начало обработки промпта", extra={
+        'user_id': user_id,
+        'operation': 'PROMPT_PROCESSING',
+        'prompt': message.text
     })
 
-    # Сохраняем последний промпт сразу после начала генерации
-    user_states[user_id].last_prompt = prompt
-
-    # Проверяем наличие и валидность ключей API
-    api_key = os.getenv('FUSIONBRAIN_API_KEY')
-    secret_key = os.getenv('FUSIONBRAIN_SECRET_KEY')
+    # Сбрасываем флаг ожидания промпта
+    user_state.awaiting_prompt = False
 
     # Проверяем наличие ключей API
     if not all([FUSIONBRAIN_API_KEY, FUSIONBRAIN_SECRET_KEY]):
@@ -1189,10 +1318,11 @@ async def generate_image_with_prompt(message: types.Message, prompt: str):
         })
         await message.answer(
             "⚠️ Ошибка конфигурации: отсутствуют ключи API. Обратитесь к администратору.",
-            reply_markup=get_back_keyboard()
+            reply_markup=get_back_keyboard(user_id)
         )
         return
 
+    # Проверяем длину промпта
     prompt = message.text
     if len(prompt) > Text2ImageAPI.MAX_PROMPT_LENGTH:
         logger.warning(f"Промпт превышает максимальную длину: {len(prompt)}", extra={
@@ -1206,19 +1336,20 @@ async def generate_image_with_prompt(message: types.Message, prompt: str):
             reply_markup=None
         )
 
-    # Сохраняем последний промпт
-    user_states[user_id].last_prompt = prompt
+    # Сохраняем промпт
+    user_state = user_states[user_id]
+    user_state.last_prompt = prompt
 
     # Отправляем сообщение о начале генерации
     status_message = await message.answer(
         Messages.GENERATING,
-        reply_markup=get_back_keyboard(),
+        reply_markup=get_back_keyboard(user_id),
         parse_mode=ParseMode.HTML
     )
 
-    logger.info(f"Начало генерации изображения", extra={
+    logger.info("Начало генерации изображения", extra={
         'user_id': user_id,
-        'operation': 'GENERATION_PROCESS',
+        'operation': 'GENERATION_START',
         'prompt': prompt
     })
 
@@ -1226,11 +1357,13 @@ async def generate_image_with_prompt(message: types.Message, prompt: str):
         # Инициализируем API и запускаем генерацию
         api = Text2ImageAPI(FUSIONBRAIN_API_KEY, FUSIONBRAIN_SECRET_KEY)
         
-        width = user_settings[user_id].width
-        height = user_settings[user_id].height
-        style = user_settings[user_id].style
+        # Получаем настройки пользователя
+        user_settings_data = user_settings[user_id]
+        width = user_settings_data.width
+        height = user_settings_data.height
+        style = user_settings_data.style
         
-        logger.info(f"Параметры генерации", extra={
+        logger.info("Параметры генерации", extra={
             'user_id': user_id,
             'operation': 'GENERATION_PARAMS',
             'width': width,
@@ -1245,7 +1378,7 @@ async def generate_image_with_prompt(message: types.Message, prompt: str):
                 raise Exception("Список моделей пуст")
             model_id = models[0]["id"]
             
-            logger.info(f"Получена модель", extra={
+            logger.info("Получена модель", extra={
                 'user_id': user_id,
                 'operation': 'MODEL_INFO',
                 'model_id': model_id
@@ -1259,7 +1392,15 @@ async def generate_image_with_prompt(message: types.Message, prompt: str):
             raise Exception("Не удалось получить доступ к модели генерации. Попробуйте позже.")
         
         # Формируем промпт с учетом стиля
-        styled_prompt = f"{prompt}, {IMAGE_STYLES[style]['prompt_prefix']}" if style != "DEFAULT" else prompt
+        style_data = IMAGE_STYLES[style]
+        styled_prompt = f"{style_data['prompt_prefix']}{prompt}"
+        
+        logger.info("Подготовленный промпт", extra={
+            'user_id': user_id,
+            'operation': 'STYLED_PROMPT',
+            'original_prompt': prompt,
+            'styled_prompt': styled_prompt
+        })
         
         # Запускаем генерацию
         uuid = await api.generate(styled_prompt, model_id, width, height)
@@ -1270,7 +1411,8 @@ async def generate_image_with_prompt(message: types.Message, prompt: str):
     except Exception as e:
         logger.error(f"Ошибка при генерации: {str(e)}", extra={
             'user_id': user_id,
-            'operation': 'GENERATION_ERROR'
+            'operation': 'GENERATION_ERROR',
+            'error': str(e)
         })
         
         # Преобразуем технические ошибки в понятные пользователю сообщения
@@ -1288,112 +1430,28 @@ async def generate_image_with_prompt(message: types.Message, prompt: str):
         
         await status_message.edit_text(
             Messages.ERROR_GEN.format(error=user_message),
-            reply_markup=get_back_keyboard(),
+            reply_markup=get_back_keyboard(user_id),
             parse_mode=ParseMode.HTML
         )
         
-async def check_generation_status(api, uuid, status_message, user_id):
+async def generate_image_with_prompt(message: types.Message, prompt: str):
+    user_id = message.from_user.id
+    user_state = user_states[user_id]
+    
+    # Сохраняем промпт перед генерацией
+    user_state.last_prompt = prompt
+    
     try:
-        max_attempts = 60  # Максимальное количество попыток
-        for attempt in range(max_attempts):
-            try:
-                response = await api.check_generation(uuid)
-                
-                if response.get("status") == "DONE":
-                    images = response.get("images")
-                    if not images:
-                        logger.error("Изображения отсутствуют в ответе", extra={
-                            'user_id': user_id,
-                            'operation': 'NO_IMAGES',
-                            'uuid': uuid
-                        })
-                        raise Exception("Изображение не было сгенерировано")
-                        
-                    # Сохраняем изображение в памяти
-                    image_data = base64.b64decode(images[0])
-                    user_states[user_id].last_image = image_data
-                    image_id = str(uuid_lib.uuid4())
-                    user_states[user_id].last_image_id = image_id
-                    
-                    # Получаем текущие настройки пользователя
-                    user_settings_data = user_settings[user_id]
-                    style = user_settings_data.style
-                    width = user_settings_data.width
-                    height = user_settings_data.height
-                    
-                    # Отправляем изображение
-                    await status_message.answer_photo(
-                        BufferedInputFile(
-                            image_data,
-                            filename=f"generation_{image_id}.png"
-                        ),
-                        caption=(
-                            f"🎨 Стиль: <b>{IMAGE_STYLES[style]['label']}</b>\n"
-                            f"📏 Размер: <b>{width}x{height}</b>\n"
-                            f"💭 Промпт: <i>{user_states[user_id].last_prompt}</i>"
-                        ),
-                        reply_markup=get_image_keyboard(image_id),
-                        parse_mode=ParseMode.HTML
-                    )
-                    
-                    # Удаляем статусное сообщение
-                    await status_message.delete()
-                    
-                    logger.info("Изображение успешно сгенерировано и отправлено", extra={
-                        'user_id': user_id,
-                        'operation': 'GENERATION_SUCCESS',
-                        'uuid': uuid,
-                        'image_id': image_id
-                    })
-                    break
-
-                await asyncio.sleep(1)
-                    
-            except Exception as e:
-                if "Generation still in progress" in str(e):
-                    if attempt == max_attempts - 1:
-                        logger.error("Превышено время ожидания", extra={
-                            'user_id': user_id,
-                            'operation': 'TIMEOUT',
-                            'uuid': uuid,
-                            'attempts': attempt + 1
-                        })
-                        raise Exception("Превышено время ожидания генерации")
-                    await asyncio.sleep(1)
-                    continue
-                raise e
-        
-        # Сбрасываем состояние ожидания промпта
-        user_states[user_id].awaiting_prompt = False
-
-    except Exception as e:
-        logger.error(f"Ошибка при проверке статуса генерации: {str(e)}", extra={
-            'user_id': user_id,
-            'operation': 'CHECK_STATUS_ERROR'
-        })
-        await status_message.edit_text(
-            f"Ошибка: {str(e)}",
-            reply_markup=get_back_keyboard()
+        # Отправляем сообщение о начале генерации
+        status_message = await message.answer(
+            Messages.GENERATING,
+            reply_markup=get_back_keyboard(user_id),
+            parse_mode=ParseMode.HTML
         )
 
-@router.message()
-async def generate_image(message: types.Message):
-    """Генерирует изображение на основе промпта"""
-    try:
-        user_id = message.from_user.id
-        logger.info("Получен запрос на генерацию изображения", extra={
-            'user_id': user_id,
-            'operation': 'IMAGE_GENERATION_START',
-            'prompt': message.text
-        })
-        
-        if not user_states[user_id].awaiting_prompt:
-            logger.warning("Получен неожиданный промпт", extra={
-                'user_id': user_id,
-                'operation': 'UNEXPECTED_PROMPT',
-                'prompt': message.text
-            })
-            return
+        # Проверяем наличие и валидность ключей API
+        api_key = os.getenv('FUSIONBRAIN_API_KEY')
+        secret_key = os.getenv('FUSIONBRAIN_SECRET_KEY')
 
         # Проверяем наличие ключей API
         if not all([FUSIONBRAIN_API_KEY, FUSIONBRAIN_SECRET_KEY]):
@@ -1403,7 +1461,7 @@ async def generate_image(message: types.Message):
             })
             await message.answer(
                 "⚠️ Ошибка конфигурации: отсутствуют ключи API. Обратитесь к администратору.",
-                reply_markup=get_back_keyboard()
+                reply_markup=get_back_keyboard(user_id)
             )
             return
 
@@ -1426,7 +1484,7 @@ async def generate_image(message: types.Message):
         # Отправляем сообщение о начале генерации
         status_message = await message.answer(
             Messages.GENERATING,
-            reply_markup=get_back_keyboard(),
+            reply_markup=get_back_keyboard(user_id),
             parse_mode=ParseMode.HTML
         )
 
@@ -1502,7 +1560,189 @@ async def generate_image(message: types.Message):
             
             await status_message.edit_text(
                 Messages.ERROR_GEN.format(error=user_message),
-                reply_markup=get_back_keyboard(),
+                reply_markup=get_back_keyboard(user_id),
+                parse_mode=ParseMode.HTML
+            )
+            
+    except Exception as e:
+        logger.error(f"Критическая ошибка в generate_image_with_prompt: {str(e)}", extra={
+            'user_id': user_id,
+            'operation': 'CRITICAL_ERROR',
+            'error': str(e)
+        })
+        if 'status_message' in locals():
+            await status_message.edit_text(
+                Messages.ERROR_CRITICAL,
+                reply_markup=get_back_keyboard(user_id),
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await message.answer(
+                Messages.ERROR_CRITICAL,
+                reply_markup=get_back_keyboard(user_id),
+                parse_mode=ParseMode.HTML
+            )
+
+async def generate_image(message: types.Message):
+    """Генерирует изображение на основе промпта"""
+    try:
+        user_id = message.from_user.id
+        logger.info("Получен запрос на генерацию изображения", extra={
+            'user_id': user_id,
+            'operation': 'IMAGE_GENERATION_START',
+            'prompt': message.text
+        })
+        
+        if not message.text:
+            logger.warning("Получено не текстовое сообщение", extra={
+                'user_id': user_id,
+                'operation': 'INVALID_MESSAGE_TYPE'
+            })
+            return
+
+        if not user_states[user_id].awaiting_prompt:
+            logger.warning("Получен промпт без ожидания", extra={
+                'user_id': user_id,
+                'operation': 'UNEXPECTED_PROMPT',
+                'prompt': message.text,
+                'awaiting_prompt': user_states[user_id].awaiting_prompt
+            })
+            await message.answer(
+                "Для генерации изображения нажмите кнопку 'Создать' и введите описание изображения.",
+                reply_markup=get_main_keyboard(user_id)
+            )
+            return
+
+        logger.info("Получен промпт для генерации", extra={
+            'user_id': user_id,
+            'operation': 'PROMPT_RECEIVED',
+            'prompt': message.text
+        })
+
+        # Сбрасываем флаг ожидания промпта
+        user_states[user_id].awaiting_prompt = False
+
+        # Проверяем наличие ключей API
+        if not all([FUSIONBRAIN_API_KEY, FUSIONBRAIN_SECRET_KEY]):
+            logger.error("Отсутствуют ключи API", extra={
+                'user_id': user_id,
+                'operation': 'MISSING_API_KEYS'
+            })
+            await message.answer(
+                "⚠️ Ошибка конфигурации: отсутствуют ключи API. Обратитесь к администратору.",
+                reply_markup=get_back_keyboard(user_id)
+            )
+            return
+
+        # Проверяем длину промпта
+        prompt = message.text
+        if len(prompt) > Text2ImageAPI.MAX_PROMPT_LENGTH:
+            logger.warning(f"Промпт превышает максимальную длину: {len(prompt)}", extra={
+                'user_id': user_id,
+                'operation': 'PROMPT_TOO_LONG',
+                'prompt_length': len(prompt)
+            })
+            prompt = prompt[:Text2ImageAPI.MAX_PROMPT_LENGTH]
+            await message.answer(
+                f"⚠️ Ваш промпт слишком длинный и был сокращен до {Text2ImageAPI.MAX_PROMPT_LENGTH} символов.",
+                reply_markup=None
+            )
+
+        # Сохраняем промпт
+        user_state = user_states[user_id]
+        user_state.last_prompt = prompt
+
+        # Отправляем сообщение о начале генерации
+        status_message = await message.answer(
+            Messages.GENERATING,
+            reply_markup=get_back_keyboard(user_id),
+            parse_mode=ParseMode.HTML
+        )
+
+        logger.info("Начало генерации изображения", extra={
+            'user_id': user_id,
+            'operation': 'GENERATION_START',
+            'prompt': prompt
+        })
+
+        try:
+            # Инициализируем API и запускаем генерацию
+            api = Text2ImageAPI(FUSIONBRAIN_API_KEY, FUSIONBRAIN_SECRET_KEY)
+            
+            # Получаем настройки пользователя
+            user_settings_data = user_settings[user_id]
+            width = user_settings_data.width
+            height = user_settings_data.height
+            style = user_settings_data.style
+            
+            logger.info("Параметры генерации", extra={
+                'user_id': user_id,
+                'operation': 'GENERATION_PARAMS',
+                'width': width,
+                'height': height,
+                'style': style
+            })
+
+            # Получаем модель
+            try:
+                models = await api.get_model()
+                if not models:
+                    raise Exception("Список моделей пуст")
+                model_id = models[0]["id"]
+                
+                logger.info("Получена модель", extra={
+                    'user_id': user_id,
+                    'operation': 'MODEL_INFO',
+                    'model_id': model_id
+                })
+                
+            except Exception as e:
+                logger.error(f"Ошибка при получении модели: {str(e)}", extra={
+                    'user_id': user_id,
+                    'operation': 'MODEL_ERROR'
+                })
+                raise Exception("Не удалось получить доступ к модели генерации. Попробуйте позже.")
+            
+            # Формируем промпт с учетом стиля
+            style_data = IMAGE_STYLES[style]
+            styled_prompt = f"{style_data['prompt_prefix']}{prompt}"
+            
+            logger.info("Подготовленный промпт", extra={
+                'user_id': user_id,
+                'operation': 'STYLED_PROMPT',
+                'original_prompt': prompt,
+                'styled_prompt': styled_prompt
+            })
+            
+            # Запускаем генерацию
+            uuid = await api.generate(styled_prompt, model_id, width, height)
+            
+            # Проверяем статус генерации
+            await check_generation_status(api, uuid, status_message, user_id)
+
+        except Exception as e:
+            logger.error(f"Ошибка при генерации: {str(e)}", extra={
+                'user_id': user_id,
+                'operation': 'GENERATION_ERROR',
+                'error': str(e)
+            })
+            
+            # Преобразуем технические ошибки в понятные пользователю сообщения
+            user_message = str(e)
+            if "Generation still in progress" in str(e):
+                user_message = "Генерация все еще выполняется. Пожалуйста, подождите."
+            elif "Превышено время ожидания" in str(e):
+                user_message = "Генерация заняла слишком много времени. Попробуйте еще раз."
+            elif "авторизации" in str(e).lower():
+                user_message = "Ошибка доступа к сервису. Обратитесь к администратору."
+            elif "модели" in str(e).lower():
+                user_message = "Сервис временно недоступен. Попробуйте позже."
+            elif "Изображение не было сгенерировано" in str(e):
+                user_message = "Не удалось сгенерировать изображение. Попробуйте другой промпт или стиль."
+            
+            await status_message.edit_text(
+                Messages.ERROR_GEN.format(error=user_message),
+                reply_markup=get_back_keyboard(user_id),
                 parse_mode=ParseMode.HTML
             )
             
@@ -1515,99 +1755,297 @@ async def generate_image(message: types.Message):
         if 'status_message' in locals():
             await status_message.edit_text(
                 Messages.ERROR_CRITICAL,
-                reply_markup=get_back_keyboard(),
+                reply_markup=get_back_keyboard(user_id),
                 parse_mode=ParseMode.HTML
             )
         else:
             await message.answer(
                 Messages.ERROR_CRITICAL,
-                reply_markup=get_back_keyboard(),
+                reply_markup=get_back_keyboard(user_id),
                 parse_mode=ParseMode.HTML
             )
 
-def get_image_keyboard(image_id: str) -> InlineKeyboardMarkup:
+async def check_generation_status(api, uuid, status_message, user_id):
+    """Проверяет статус генерации изображения"""
+    try:
+        max_attempts = 60  # Максимальное количество попыток
+        attempt = 0
+        
+        while attempt < max_attempts:
+            try:
+                # Проверяем статус генерации
+                response = await api.check_generation(uuid)
+                
+                logger.info("Получен ответ от API", extra={
+                    'user_id': user_id,
+                    'operation': 'API_RESPONSE',
+                    'response': str(response)
+                })
+                
+                if isinstance(response, list) and response:
+                    # Если ответ - список с изображением
+                    logger.info("Изображение успешно сгенерировано", extra={
+                        'user_id': user_id,
+                        'operation': 'GENERATION_SUCCESS'
+                    })
+                    
+                    # Сохраняем изображение
+                    image_data = base64.b64decode(response[0])
+                    
+                    # Отправляем изображение пользователю
+                    if status_message.photo:
+                        await status_message.answer_photo(
+                            BufferedInputFile(
+                                image_data,
+                                filename=f"generation_{uuid}.png"
+                            ),
+                            caption=(
+                                f"🎨 Стиль: <b>{IMAGE_STYLES[user_settings[user_id].style]['label']}</b>\n"
+                                f"📏 Размер: <b>{user_settings[user_id].width}x{user_settings[user_id].height}</b>\n"
+                                f"💭 Промпт: <i>{user_states[user_id].last_prompt}</i>"
+                            ),
+                            reply_markup=get_image_keyboard(uuid, user_id),
+                            parse_mode=ParseMode.HTML
+                        )
+                    else:
+                        await status_message.answer_photo(
+                            BufferedInputFile(
+                                image_data,
+                                filename=f"generation_{uuid}.png"
+                            ),
+                            caption=(
+                                f"🎨 Стиль: <b>{IMAGE_STYLES[user_settings[user_id].style]['label']}</b>\n"
+                                f"📏 Размер: <b>{user_settings[user_id].width}x{user_settings[user_id].height}</b>\n"
+                                f"💭 Промпт: <i>{user_states[user_id].last_prompt}</i>"
+                            ),
+                            reply_markup=get_image_keyboard(uuid, user_id),
+                            parse_mode=ParseMode.HTML
+                        )
+                    
+                    # Сохраняем информацию о последнем изображении
+                    user_states[user_id].last_image = image_data
+                    user_states[user_id].last_image_id = uuid
+                    
+                    return True
+                    
+                elif isinstance(response, dict):
+                    # Если ответ - словарь со статусом
+                    status = response.get('status')
+                    
+                    if status == "DONE":
+                        images = response.get('images', [])
+                        if not images:
+                            raise Exception("Изображение не было сгенерировано")
+                            
+                        logger.info("Изображение успешно сгенерировано", extra={
+                            'user_id': user_id,
+                            'operation': 'GENERATION_SUCCESS'
+                        })
+                        
+                        # Сохраняем изображение
+                        image_data = base64.b64decode(images[0])
+                        
+                        # Отправляем изображение пользователю
+                        if status_message.photo:
+                            await status_message.answer_photo(
+                                BufferedInputFile(
+                                    image_data,
+                                    filename=f"generation_{uuid}.png"
+                                ),
+                                caption=(
+                                    f"🎨 Стиль: <b>{IMAGE_STYLES[user_settings[user_id].style]['label']}</b>\n"
+                                    f"📏 Размер: <b>{user_settings[user_id].width}x{user_settings[user_id].height}</b>\n"
+                                    f"💭 Промпт: <i>{user_states[user_id].last_prompt}</i>"
+                                ),
+                                reply_markup=get_image_keyboard(uuid, user_id),
+                                parse_mode=ParseMode.HTML
+                            )
+                        else:
+                            await status_message.answer_photo(
+                                BufferedInputFile(
+                                    image_data,
+                                    filename=f"generation_{uuid}.png"
+                                ),
+                                caption=(
+                                    f"🎨 Стиль: <b>{IMAGE_STYLES[user_settings[user_id].style]['label']}</b>\n"
+                                    f"📏 Размер: <b>{user_settings[user_id].width}x{user_settings[user_id].height}</b>\n"
+                                    f"💭 Промпт: <i>{user_states[user_id].last_prompt}</i>"
+                                ),
+                                reply_markup=get_image_keyboard(uuid, user_id),
+                                parse_mode=ParseMode.HTML
+                            )
+                        
+                        # Сохраняем информацию о последнем изображении
+                        user_states[user_id].last_image = image_data
+                        user_states[user_id].last_image_id = uuid
+                        
+                        return True
+                        
+                    elif status in ["INITIAL", "PROCESSING"]:
+                        self.logger.info("Генерация все еще выполняется", extra={
+                            'user_id': user_id,
+                            'operation': 'GENERATION_IN_PROGRESS',
+                            'uuid': uuid,
+                            'status': status
+                        })
+                        raise Exception("Generation still in progress")
+                        
+                    elif status == "FAIL":
+                        error = response.get("error", "Неизвестная ошибка")
+                        raise Exception(f"Ошибка генерации: {error}")
+                
+            except Exception as e:
+                if "Generation still in progress" in str(e):
+                    attempt += 1
+                    await asyncio.sleep(1)
+                    continue
+                else:
+                    raise e
+            
+            attempt += 1
+            await asyncio.sleep(1)
+        
+        # Если превышено максимальное количество попыток
+        raise Exception("Превышено время ожидания генерации")
+        
+    except Exception as e:
+        logger.error(f"Ошибка при проверке статуса генерации: {str(e)}", extra={
+            'user_id': user_id,
+            'operation': 'STATUS_CHECK_ERROR',
+            'error': str(e)
+        })
+        raise e
+
+def get_image_keyboard(image_id: str, user_id: int) -> InlineKeyboardMarkup:
     """Создает клавиатуру для изображения"""
-    buttons = [
-        [
-            InlineKeyboardButton(text=f"{Emoji.CREATE} Создать новое", callback_data=CallbackData.GENERATE),
-            InlineKeyboardButton(text="🔄 Повторить", callback_data=CallbackData.REGENERATE)
-        ],
-        [
-            InlineKeyboardButton(text=f"{Emoji.REMOVE_BG} Удалить фон", callback_data=f"{CallbackData.REMOVE_BG}_{image_id}"),
-            InlineKeyboardButton(text=f"{Emoji.HOME} В начало", callback_data=CallbackData.BACK)
-        ]
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+    keyboard = InlineKeyboardBuilder()
+    
+    # Основные кнопки для работы с изображением
+    keyboard.button(text=f"{Emoji.REMOVE_BG} Удалить фон", callback_data=f"{CallbackData.REMOVE_BG}_{image_id}")
+    
+    # Добавляем кнопку регенерации, если есть сохраненный промпт
+    if user_states[user_id].last_prompt:
+        keyboard.button(text=f"{Emoji.CREATE} Повторить", callback_data=CallbackData.REGENERATE)
+    
+    keyboard.button(text=f"{Emoji.STYLE} Стиль", callback_data=CallbackData.STYLES)
+    keyboard.button(text=f"{Emoji.SIZE} Размер", callback_data=CallbackData.SETTINGS)
+    keyboard.button(text=f"{Emoji.BACK} В меню", callback_data=CallbackData.BACK)
+    
+    keyboard.adjust(2)
+    return keyboard.as_markup()
 
-def get_main_keyboard() -> InlineKeyboardMarkup:
+def get_main_keyboard(user_id: int) -> InlineKeyboardMarkup:
     """Создает основную клавиатуру главного меню"""
-    buttons = [
-        [
-            InlineKeyboardButton(text=f"{Emoji.CREATE} Создать", callback_data=CallbackData.GENERATE),
-            InlineKeyboardButton(text=f"{Emoji.STYLE} Стиль", callback_data=CallbackData.STYLES)
-        ],
-        [
-            InlineKeyboardButton(text=f"{Emoji.SIZE} Размер", callback_data=CallbackData.SETTINGS),
-            InlineKeyboardButton(text=f"{Emoji.HELP} Помощь", callback_data=CallbackData.HELP)
-        ]
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+    keyboard = InlineKeyboardBuilder()
+    
+    # Основные кнопки
+    keyboard.button(text=f"{Emoji.CREATE} Создать", callback_data=CallbackData.GENERATE)
+    
+    # Добавляем кнопку регенерации, если есть сохраненный промпт
+    if user_states[user_id].last_prompt:
+        keyboard.button(text=f"{Emoji.CREATE} Повторить", callback_data=CallbackData.REGENERATE)
+    
+    keyboard.button(text=f"{Emoji.STYLE} Стиль", callback_data=CallbackData.STYLES)
+    keyboard.button(text=f"{Emoji.SIZE} Размер", callback_data=CallbackData.SETTINGS)
+    keyboard.button(text=f"{Emoji.HELP} Помощь", callback_data=CallbackData.HELP)
+    
+    keyboard.adjust(2)
+    return keyboard.as_markup()
 
-def get_settings_keyboard() -> InlineKeyboardMarkup:
+def get_settings_keyboard(user_id: int) -> InlineKeyboardMarkup:
     """Создает клавиатуру настроек размера"""
-    buttons = []
-    row = []
-    for size_name, size_data in IMAGE_SIZES.items():
-        button = InlineKeyboardButton(
-            text=f"{size_data['width']}x{size_data['height']}",
-            callback_data=f"{CallbackData.SIZE_PREFIX}{size_name}"
+    keyboard = InlineKeyboardBuilder()
+    
+    # Кнопки размеров
+    for size_key, size_data in IMAGE_SIZES.items():
+        keyboard.button(
+            text=f"{size_data['label']} ({size_data['width']}x{size_data['height']})",
+            callback_data=f"{CallbackData.SIZE_PREFIX}{size_key}"
         )
-        row.append(button)
-        if len(row) == 2:
-            buttons.append(row)
-            row = []
     
-    if row:  # Добавляем оставшиеся кнопки
-        buttons.append(row)
+    # Добавляем кнопку регенерации, если есть сохраненный промпт
+    if user_states[user_id].last_prompt:
+        keyboard.button(text=f"{Emoji.CREATE} Повторить", callback_data=CallbackData.REGENERATE)
     
-    buttons.append([InlineKeyboardButton(text=f"{Emoji.BACK} Назад", callback_data=CallbackData.BACK)])
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+    keyboard.button(text=f"{Emoji.BACK} Назад", callback_data=CallbackData.BACK)
+    
+    keyboard.adjust(2)
+    return keyboard.as_markup()
 
-def get_styles_keyboard() -> InlineKeyboardMarkup:
-    """Создает клавиатуру выбора стилей"""
-    buttons = []
-    row = []
-    for style_name, style_data in IMAGE_STYLES.items():
-        button = InlineKeyboardButton(
-            text=style_data['label'],
-            callback_data=f"{CallbackData.STYLE_PREFIX}{style_name}"
+def get_styles_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    """Создает клавиатуру выбора стиля изображения"""
+    keyboard = InlineKeyboardBuilder()
+    
+    # Добавляем кнопки стилей
+    current_style = user_settings[user_id].style
+    
+    logger.info("Создание клавиатуры стилей", extra={
+        'user_id': user_id,
+        'operation': 'CREATING_STYLES_KEYBOARD',
+        'current_style': current_style
+    })
+    
+    for style_key, style_data in IMAGE_STYLES.items():
+        # Добавляем маркер к текущему стилю
+        button_text = f"{Emoji.CHECK if style_key == current_style else ''} {style_data['label']}"
+        callback_data = f"{CallbackData.STYLE_PREFIX}{style_key}"
+        
+        logger.info("Добавление кнопки стиля", extra={
+            'user_id': user_id,
+            'operation': 'ADDING_STYLE_BUTTON',
+            'style_key': style_key,
+            'button_text': button_text,
+            'callback_data': callback_data
+        })
+        
+        keyboard.button(
+            text=button_text,
+            callback_data=callback_data
         )
-        row.append(button)
-        if len(row) == 2:
-            buttons.append(row)
-            row = []
     
-    if row:  # Добавляем оставшиеся кнопки
-        buttons.append(row)
+    # Добавляем кнопку "Назад"
+    keyboard.button(
+        text=f"{Emoji.BACK} Назад",
+        callback_data=CallbackData.BACK
+    )
     
-    buttons.append([InlineKeyboardButton(text=f"{Emoji.BACK} Назад", callback_data=CallbackData.BACK)])
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+    # Добавляем кнопку "Повторить", если есть последний промпт
+    if user_states[user_id].last_prompt:
+        keyboard.button(
+            text=f"{Emoji.CREATE} Повторить",
+            callback_data=CallbackData.REGENERATE
+        )
+    
+    # Настраиваем размещение кнопок
+    keyboard.adjust(2)
+    
+    return keyboard.as_markup()
 
-def get_prompt_keyboard() -> InlineKeyboardMarkup:
+def get_prompt_keyboard(user_id: int) -> InlineKeyboardMarkup:
     """Создает клавиатуру для режима ввода промпта"""
-    buttons = [
-        [
-            InlineKeyboardButton(text=f"{Emoji.STYLE} Стиль", callback_data=CallbackData.STYLES),
-            InlineKeyboardButton(text=f"{Emoji.SIZE} Размер", callback_data=CallbackData.SETTINGS)
-        ],
-        [InlineKeyboardButton(text=f"{Emoji.BACK} Назад", callback_data=CallbackData.BACK)]
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+    keyboard = InlineKeyboardBuilder()
+    
+    # Добавляем кнопку регенерации, если есть сохраненный промпт
+    if user_states[user_id].last_prompt:
+        keyboard.button(text=f"{Emoji.CREATE} Повторить", callback_data=CallbackData.REGENERATE)
+    
+    keyboard.button(text=f"{Emoji.BACK} Назад", callback_data=CallbackData.BACK)
+    
+    keyboard.adjust(2)
+    return keyboard.as_markup()
 
-def get_back_keyboard() -> InlineKeyboardMarkup:
+def get_back_keyboard(user_id: int) -> InlineKeyboardMarkup:
     """Создает клавиатуру с кнопкой возврата"""
-    buttons = [[InlineKeyboardButton(text=f"{Emoji.BACK} Назад", callback_data=CallbackData.BACK)]]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+    keyboard = InlineKeyboardBuilder()
+    
+    # Добавляем кнопку регенерации, если есть сохраненный промпт
+    if user_states[user_id].last_prompt:
+        keyboard.button(text=f"{Emoji.CREATE} Повторить", callback_data=CallbackData.REGENERATE)
+    
+    keyboard.button(text=f"{Emoji.BACK} Назад", callback_data=CallbackData.BACK)
+    
+    keyboard.adjust(2)
+    return keyboard.as_markup()
 
 async def main():
     """Запуск бота"""
