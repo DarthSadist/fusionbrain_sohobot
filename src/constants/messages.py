@@ -7,6 +7,9 @@ class MessageKey(str, Enum):
     HELP = "help"
     PROMPT = "prompt"
     GENERATING = "generating"
+    REMOVING_BG = "removing_bg"
+    REMOVE_BG_SUCCESS = "remove_bg_success"
+    REMOVE_BG_ERROR = "remove_bg_error"
     ERROR = "error"
     SUCCESS = "success"
     SETTINGS = "settings"
@@ -81,6 +84,21 @@ class MessageTemplate:
 
 Это может занять некоторое время.
 🎨 Стиль: <b>{style}</b>
+""",
+        MessageKey.REMOVING_BG: """
+⏳ <b>Удаление фона...</b>
+
+Это может занять некоторое время.
+""",
+        MessageKey.REMOVE_BG_SUCCESS: """
+✅ <b>Фон успешно удален!</b>
+""",
+        MessageKey.REMOVE_BG_ERROR: """
+❌ <b>Ошибка при удалении фона</b>
+
+{{error_message}}
+
+Попробуйте еще раз или обратитесь к администратору.
 """,
         MessageKey.ERROR: """
 ❌ <b>Произошла ошибка</b>

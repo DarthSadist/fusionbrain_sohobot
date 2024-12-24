@@ -6,18 +6,21 @@ import logging
 from functools import lru_cache
 import hashlib
 
+logger = logging.getLogger(__name__)
+
 class ImageProcessor:
     """Класс для обработки изображений с оптимизированным кэшированием и обработкой ошибок"""
     MAX_SIZE = 1500
     _model = None
-    _logger = logging.getLogger(__name__)
     _cache: Dict[str, bytes] = {}
     MAX_CACHE_SIZE = 100  # Максимальное количество кэшированных результатов
 
     @classmethod
     def _get_model(cls):
         """Получает или создает экземпляр модели"""
+        logger.info("Получение модели для удаления фона")
         if cls._model is None:
+            logger.info("Инициализация новой модели")
             cls._model = remove
         return cls._model
 
@@ -33,17 +36,17 @@ class ImageProcessor:
         width, height = image.size
         
         if width > cls.MAX_SIZE or height > cls.MAX_SIZE:
-            cls._logger.info(f"Resizing image from {width}x{height}")
+            logger.info(f"Изображение требует уменьшения. Текущий размер: {width}x{height}")
             ratio = min(cls.MAX_SIZE / width, cls.MAX_SIZE / height)
             new_width = int(width * ratio)
             new_height = int(height * ratio)
             original_size = (width, height)
             try:
                 image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
-                cls._logger.info(f"Image resized to {new_width}x{new_height}")
+                logger.info(f"Изображение успешно уменьшено до {new_width}x{new_height}")
             except Exception as e:
-                cls._logger.error(f"Error during image resize: {str(e)}")
-                raise ValueError(f"Failed to resize image: {str(e)}")
+                logger.error(f"Ошибка при изменении размера: {str(e)}")
+                raise ValueError(f"Не удалось изменить размер изображения: {str(e)}")
             
         return image, original_size
 
@@ -57,43 +60,54 @@ class ImageProcessor:
     def _manage_cache(cls):
         """Управление размером кэша"""
         if len(cls._cache) > cls.MAX_CACHE_SIZE:
+            logger.info(f"Кэш превысил максимальный размер ({cls.MAX_CACHE_SIZE}). Очистка...")
             # Удаляем 20% старых записей
             items_to_remove = int(cls.MAX_CACHE_SIZE * 0.2)
             for _ in range(items_to_remove):
                 cls._cache.pop(next(iter(cls._cache)))
+            logger.info(f"Удалено {items_to_remove} элементов из кэша")
 
     @classmethod
-    async def remove_background(cls, image_data: bytes) -> bytes:
+    def remove_background(cls, image_data: bytes) -> bytes:
         """Удаляет фон с изображения с использованием кэширования"""
+        logger.info("Начало процесса удаления фона")
         image_hash = cls._calculate_hash(image_data)
         
         # Проверяем кэш
         if image_hash in cls._cache:
-            cls._logger.info("Using cached result for background removal")
+            logger.info("Найден кэшированный результат")
             return cls._cache[image_hash]
 
         try:
             # Открываем изображение
+            logger.info("Открытие изображения")
             image = Image.open(io.BytesIO(image_data))
+            logger.info(f"Изображение открыто. Режим: {image.mode}, Размер: {image.size}")
             
             # Проверяем и конвертируем формат если нужно
             if image.mode not in ('RGB', 'RGBA'):
+                logger.info(f"Конвертация изображения из {image.mode} в RGBA")
                 image = image.convert('RGBA')
             
             # Уменьшаем размер если нужно
+            logger.info("Проверка размера изображения")
             image, original_size = cls._resize_if_needed(image)
             
             # Конвертируем в bytes для обработки
+            logger.info("Конвертация изображения в bytes")
             img_byte_arr = io.BytesIO()
             image.save(img_byte_arr, format='PNG')
             img_byte_arr = img_byte_arr.getvalue()
             
             # Удаляем фон
+            logger.info("Запуск процесса удаления фона")
             model = cls._get_model()
             result = model(img_byte_arr)
+            logger.info("Фон успешно удален")
             
             # Восстанавливаем размер если нужно
             if original_size:
+                logger.info(f"Восстановление исходного размера: {original_size}")
                 result_image = Image.open(io.BytesIO(result))
                 restore_size = cls._restore_size(
                     result_image.width,
@@ -112,16 +126,19 @@ class ImageProcessor:
             cls._cache[image_hash] = result
             cls._manage_cache()
             
+            logger.info("Процесс удаления фона успешно завершен")
             return result
             
         except Exception as e:
-            cls._logger.error(f"Error during background removal: {str(e)}", 
-                            exc_info=True,
-                            extra={'image_size': image.size if 'image' in locals() else None})
-            raise ValueError(f"Failed to remove background: {str(e)}")
+            logger.error(f"Ошибка при удалении фона: {str(e)}", 
+                        exc_info=True,
+                        extra={'image_size': image.size if 'image' in locals() else None,
+                              'image_mode': image.mode if 'image' in locals() else None})
+            raise ValueError(f"Не удалось удалить фон: {str(e)}")
 
     @classmethod
     def clear_cache(cls):
         """Очищает кэш обработанных изображений"""
         cls._cache.clear()
         cls._restore_size.cache_clear()
+        logger.info("Кэш очищен")

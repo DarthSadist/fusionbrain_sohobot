@@ -38,6 +38,18 @@ os.environ['ORT_LOGGING_LEVEL'] = '3'  # Только критические о�
 os.environ['ORT_DISABLE_TENSORRT'] = '1'
 os.environ['ORT_DISABLE_CUDA'] = '1'
 
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),  # Вывод в консоль
+        logging.FileHandler('bot.log')  # Запись в файл
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
 # Создаем форматтер для логов с дополнительной информацией
 log_formatter = logging.Formatter(
     '%(asctime)s - %(name)s - %(levelname)s - [USER_ID:%(user_id)s] - [OPERATION:%(operation)s] - %(message)s',
@@ -98,7 +110,7 @@ logger.addFilter(ContextFilter())
 os.makedirs('logs', exist_ok=True)
 
 from dotenv import load_dotenv
-from src.api.text2image import Text2ImageAPI
+from src.api.fusion_brain import Text2ImageAPI, CensorshipError
 from src.models.image_info import ImageInfo
 from src.constants.messages import MessageTemplate, MessageKey
 from src.constants.bot_constants import (
@@ -148,7 +160,6 @@ START_IMAGE_URL = 'https://ваша ссылка на картинку'
 bot = Bot(token=API_TOKEN, parse_mode=ParseMode.HTML)
 dp = Dispatcher()
 router = Router()
-dp.include_router(router)
 
 class CensorshipError(Exception):
     pass
@@ -737,7 +748,138 @@ from aiogram.filters.callback_data import CallbackData as BaseCallbackData
 class StyleCallback(BaseCallbackData, prefix="style"):
     style: str
 
-@router.message(Command("start"))
+def get_image_keyboard(image_id: str, user_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура для работы с изображением"""
+    keyboard = InlineKeyboardBuilder()
+    
+    # Основные кнопки для работы с изображением
+    keyboard.button(text=f"{EmojiEnum.REMOVE_BG} Удалить фон", callback_data=f"{CallbackEnum.REMOVE_BG}_{image_id}")
+    
+    # Добавляем кнопку регенерации, если есть сохраненный промпт
+    if user_states[user_id].last_prompt:
+        keyboard.button(text=f"{EmojiEnum.CREATE} Повторить", callback_data=CallbackEnum.REGENERATE)
+    
+    keyboard.button(text=f"{EmojiEnum.STYLE} Стиль", callback_data=CallbackEnum.STYLES)
+    keyboard.button(text=f"{EmojiEnum.SIZE} Размер", callback_data=CallbackEnum.SETTINGS)
+    keyboard.button(text=f"{EmojiEnum.BACK} В меню", callback_data=CallbackEnum.BACK)
+    
+    keyboard.adjust(2)
+    return keyboard.as_markup()
+
+def get_main_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    """Основная клавиатура"""
+    keyboard = InlineKeyboardBuilder()
+    
+    # Основные кнопки
+    keyboard.button(text=f"{EmojiEnum.CREATE} Создать", callback_data=CallbackEnum.GENERATE)
+    
+    # Добавляем кнопку регенерации, если есть сохраненный промпт
+    if user_states[user_id].last_prompt:
+        keyboard.button(text=f"{EmojiEnum.CREATE} Повторить", callback_data=CallbackEnum.REGENERATE)
+    
+    keyboard.button(text=f"{EmojiEnum.STYLE} Стиль", callback_data=CallbackEnum.STYLES)
+    keyboard.button(text=f"{EmojiEnum.SIZE} Размер", callback_data=CallbackEnum.SETTINGS)
+    keyboard.button(text=f"{EmojiEnum.HELP} Помощь", callback_data=CallbackEnum.HELP)
+    
+    keyboard.adjust(2)
+    return keyboard.as_markup()
+
+def get_settings_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура выбора размера"""
+    keyboard = InlineKeyboardBuilder()
+    
+    # Кнопки размеров
+    for size_key, size_data in IMAGE_SIZES.items():
+        keyboard.button(
+            text=f"{size_data['label']} ({size_data['width']}x{size_data['height']})",
+            callback_data=f"{CallbackEnum.SIZE_PREFIX}{size_key}"
+        )
+    
+    # Добавляем кнопку регенерации, если есть сохраненный промпт
+    if user_states[user_id].last_prompt:
+        keyboard.button(text=f"{EmojiEnum.CREATE} Повторить", callback_data=CallbackEnum.REGENERATE)
+    
+    keyboard.button(text=f"{EmojiEnum.BACK} Назад", callback_data=CallbackEnum.BACK)
+    
+    keyboard.adjust(2)
+    return keyboard.as_markup()
+
+def get_styles_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура выбора стиля изображения"""
+    keyboard = InlineKeyboardBuilder()
+    
+    # Добавляем кнопки стилей
+    current_style = user_settings[user_id].style
+    
+    logger.info("Создание клавиатуры стилей", extra={
+        'user_id': user_id,
+        'operation': 'CREATING_STYLES_KEYBOARD',
+        'current_style': current_style
+    })
+    
+    for style_key, style_data in IMAGE_STYLES.items():
+        # Добавляем маркер к текущему стилю
+        button_text = f"{EmojiEnum.CHECK if style_key == current_style else ''} {style_data['label']}"
+        callback_data = f"{CallbackEnum.STYLE_PREFIX}{style_key}"
+        
+        logger.info("Добавление кнопки стиля", extra={
+            'user_id': user_id,
+            'operation': 'ADDING_STYLE_BUTTON',
+            'style_key': style_key,
+            'button_text': button_text,
+            'callback_data': callback_data
+        })
+        
+        keyboard.button(
+            text=button_text,
+            callback_data=callback_data
+        )
+    
+    # Добавляем кнопку "Назад"
+    keyboard.button(
+        text=f"{EmojiEnum.BACK} Назад",
+        callback_data=CallbackEnum.BACK
+    )
+    
+    # Добавляем кнопку "Повторить", если есть последний промпт
+    if user_states[user_id].last_prompt:
+        keyboard.button(
+            text=f"{EmojiEnum.CREATE} Повторить",
+            callback_data=CallbackEnum.REGENERATE
+        )
+    
+    # Настраиваем размещение кнопок
+    keyboard.adjust(2)
+    
+    return keyboard.as_markup()
+
+def get_prompt_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура для режима ввода промпта"""
+    keyboard = InlineKeyboardBuilder()
+    
+    # Добавляем кнопку регенерации, если есть сохраненный промпт
+    if user_states[user_id].last_prompt:
+        keyboard.button(text=f"{EmojiEnum.CREATE} Повторить", callback_data=CallbackEnum.REGENERATE)
+    
+    keyboard.button(text=f"{EmojiEnum.BACK} Назад", callback_data=CallbackEnum.BACK)
+    
+    keyboard.adjust(2)
+    return keyboard.as_markup()
+
+def get_back_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура с кнопкой возврата"""
+    keyboard = InlineKeyboardBuilder()
+    
+    # Добавляем кнопку регенерации, если есть сохраненный промпт
+    if user_states[user_id].last_prompt:
+        keyboard.button(text=f"{EmojiEnum.CREATE} Повторить", callback_data=CallbackEnum.REGENERATE)
+    
+    keyboard.button(text=f"{EmojiEnum.BACK} Назад", callback_data=CallbackEnum.BACK)
+    
+    keyboard.adjust(2)
+    return keyboard.as_markup()
+
+@router.message(Command(commands=['start', 'help']))
 async def send_welcome(message: types.Message):
     """Обработчик команды /start"""
     try:
@@ -867,7 +1009,7 @@ async def process_size_change(callback_query: CallbackQuery):
             show_alert=True
         )
 
-@router.callback_query(F.data == CallbackEnum.REMOVE_BG)
+@router.callback_query(lambda c: c.data.startswith(f"{CallbackEnum.REMOVE_BG}_"))
 async def process_remove_background(callback_query: CallbackQuery):
     """Обработчик удаления фона с изображения"""
     try:
@@ -894,8 +1036,13 @@ async def process_remove_background(callback_query: CallbackQuery):
             # Засекаем время начала обработки
             start_time = datetime.now()
             
-            # Удаляем фон
-            image_without_bg = await ImageProcessor.remove_background(user_state.last_image)
+            # Запускаем удаление фона в отдельном потоке
+            loop = asyncio.get_event_loop()
+            image_without_bg = await loop.run_in_executor(
+                None, 
+                ImageProcessor.remove_background,
+                user_state.last_image
+            )
             
             # Вычисляем время обработки
             processing_time = (datetime.now() - start_time).total_seconds()
@@ -949,7 +1096,7 @@ async def process_remove_background(callback_query: CallbackQuery):
             await status_message.edit_text(
                 MessageTemplate.get(
                     MessageKey.REMOVE_BG_ERROR,
-                    error="Не удалось обработать изображение"
+                    error=str(e)
                 ),
                 reply_markup=get_back_keyboard(user_id),
                 parse_mode=ParseMode.HTML
@@ -961,10 +1108,9 @@ async def process_remove_background(callback_query: CallbackQuery):
             'operation': 'REMOVE_BG_CRITICAL_ERROR',
             'error': str(e)
         })
-        await callback_query.message.answer(
+        await callback_query.answer(
             MessageTemplate.get(MessageKey.ERROR_CRITICAL),
-            reply_markup=get_back_keyboard(user_id),
-            parse_mode=ParseMode.HTML
+            show_alert=True
         )
 
 @router.callback_query(F.data == CallbackEnum.GENERATE)
@@ -1709,8 +1855,7 @@ async def generate_image(message: types.Message):
         if 'status_message' in locals():
             await status_message.edit_text(
                 MessageTemplate.get(MessageKey.ERROR_CRITICAL),
-                reply_markup=get_back_keyboard(user_id),
-                parse_mode=ParseMode.HTML
+                reply_markup=get_back_keyboard(user_id)
             )
         else:
             await message.answer(
@@ -1720,7 +1865,6 @@ async def generate_image(message: types.Message):
             )
 
 async def check_generation_status(api, uuid, status_message, user_id, start_time=None):
-    """Проверяет статус генерации изображения"""
     try:
         max_attempts = 60  # Максимальное количество попыток
         attempt = 0
@@ -1826,26 +1970,17 @@ async def check_generation_status(api, uuid, status_message, user_id, start_time
                         # Отправляем изображение пользователю с полной информацией
                         message_text = MessageTemplate.get_image_info(image_info)
                         
-                        if status_message.photo:
-                            await status_message.answer_photo(
-                                BufferedInputFile(
+                        await status_message.edit_media(
+                            media=types.InputMediaPhoto(
+                                media=BufferedInputFile(
                                     image_data,
-                                    filename=f"generation_{uuid}.png"
+                                    filename=f"{uuid}.png"
                                 ),
                                 caption=message_text,
-                                reply_markup=get_image_keyboard(uuid, user_id),
                                 parse_mode=ParseMode.HTML
-                            )
-                        else:
-                            await status_message.answer_photo(
-                                BufferedInputFile(
-                                    image_data,
-                                    filename=f"generation_{uuid}.png"
-                                ),
-                                caption=message_text,
-                                reply_markup=get_image_keyboard(uuid, user_id),
-                                parse_mode=ParseMode.HTML
-                            )
+                            ),
+                            reply_markup=get_image_keyboard(uuid, user_id)
+                        )
                         
                         # Сохраняем информацию о последнем изображении
                         user_states[user_id].last_image = image_data
@@ -1858,165 +1993,96 @@ async def check_generation_status(api, uuid, status_message, user_id, start_time
                             'user_id': user_id,
                             'operation': 'GENERATION_IN_PROGRESS',
                             'uuid': uuid,
-                            'status': status
+                            'status': status,
+                            'attempt': attempt
                         })
-                        raise Exception("Generation still in progress")
+                        attempt += 1
+                        await asyncio.sleep(2)  # Ждем 2 секунды перед следующей попыткой
+                        continue
                         
-                    elif status == "FAIL":
-                        error = response.get("error", "Неизвестная ошибка")
-                        raise Exception(f"Ошибка генерации: {error}")
-                
+                    elif status == "FAILED":
+                        error = response.get('error', 'Неизвестная ошибка')
+                        logger.error(f"Генерация не удалась: {error}", extra={
+                            'user_id': user_id,
+                            'operation': 'GENERATION_FAILED',
+                            'uuid': uuid,
+                            'error': error
+                        })
+                        await status_message.edit_text(
+                            MessageTemplate.get(MessageKey.ERROR_GEN, error=error),
+                            reply_markup=get_back_keyboard(user_id),
+                            parse_mode=ParseMode.HTML
+                        )
+                        return False
+                        
+                    else:
+                        logger.error(f"Получен неизвестный статус: {response['status']}", extra={
+                            'user_id': user_id,
+                            'operation': 'UNKNOWN_STATUS',
+                            'uuid': uuid,
+                            'status': response['status']
+                        })
+                        await status_message.edit_text(
+                            MessageTemplate.get(MessageKey.ERROR_GEN, error="Неизвестный статус генерации"),
+                            reply_markup=get_back_keyboard(user_id),
+                            parse_mode=ParseMode.HTML
+                        )
+                        return False
+                        
             except Exception as e:
-                if "Generation still in progress" in str(e):
-                    attempt += 1
-                    await asyncio.sleep(1)
-                    continue
-                raise e
+                if str(e) != "Generation still in progress":
+                    raise e
+                
+        # Если превышено максимальное количество попыток
+        logger.error("Превышено время ожидания генерации", extra={
+            'user_id': user_id,
+            'operation': 'GENERATION_TIMEOUT',
+            'uuid': uuid,
+            'max_attempts': max_attempts
+        })
+        await status_message.edit_text(
+            MessageTemplate.get(MessageKey.ERROR_GEN, error="Превышено время ожидания генерации"),
+            reply_markup=get_back_keyboard(user_id),
+            parse_mode=ParseMode.HTML
+        )
+        return False
             
-        raise Exception("Превышено время ожидания генерации")
-        
     except Exception as e:
         logger.error(f"Ошибка при проверке статуса генерации: {str(e)}", extra={
             'user_id': user_id,
             'operation': 'CHECK_STATUS_ERROR',
+            'uuid': uuid,
             'error': str(e)
         })
-        raise e
-
-def get_image_keyboard(image_id: str, user_id: int) -> InlineKeyboardMarkup:
-    """Клавиатура для работы с изображением"""
-    keyboard = InlineKeyboardBuilder()
-    
-    # Основные кнопки для работы с изображением
-    keyboard.button(text=f"{EmojiEnum.REMOVE_BG} Удалить фон", callback_data=f"{CallbackEnum.REMOVE_BG}_{image_id}")
-    
-    # Добавляем кнопку регенерации, если есть сохраненный промпт
-    if user_states[user_id].last_prompt:
-        keyboard.button(text=f"{EmojiEnum.CREATE} Повторить", callback_data=CallbackEnum.REGENERATE)
-    
-    keyboard.button(text=f"{EmojiEnum.STYLE} Стиль", callback_data=CallbackEnum.STYLES)
-    keyboard.button(text=f"{EmojiEnum.SIZE} Размер", callback_data=CallbackEnum.SETTINGS)
-    keyboard.button(text=f"{EmojiEnum.BACK} В меню", callback_data=CallbackEnum.BACK)
-    
-    keyboard.adjust(2)
-    return keyboard.as_markup()
-
-def get_main_keyboard(user_id: int) -> InlineKeyboardMarkup:
-    """Основная клавиатура"""
-    keyboard = InlineKeyboardBuilder()
-    
-    # Основные кнопки
-    keyboard.button(text=f"{EmojiEnum.CREATE} Создать", callback_data=CallbackEnum.GENERATE)
-    
-    # Добавляем кнопку регенерации, если есть сохраненный промпт
-    if user_states[user_id].last_prompt:
-        keyboard.button(text=f"{EmojiEnum.CREATE} Повторить", callback_data=CallbackEnum.REGENERATE)
-    
-    keyboard.button(text=f"{EmojiEnum.STYLE} Стиль", callback_data=CallbackEnum.STYLES)
-    keyboard.button(text=f"{EmojiEnum.SIZE} Размер", callback_data=CallbackEnum.SETTINGS)
-    keyboard.button(text=f"{EmojiEnum.HELP} Помощь", callback_data=CallbackEnum.HELP)
-    
-    keyboard.adjust(2)
-    return keyboard.as_markup()
-
-def get_settings_keyboard(user_id: int) -> InlineKeyboardMarkup:
-    """Клавиатура выбора размера"""
-    keyboard = InlineKeyboardBuilder()
-    
-    # Кнопки размеров
-    for size_key, size_data in IMAGE_SIZES.items():
-        keyboard.button(
-            text=f"{size_data['label']} ({size_data['width']}x{size_data['height']})",
-            callback_data=f"{CallbackEnum.SIZE_PREFIX}{size_key}"
+        await status_message.edit_text(
+            MessageTemplate.get(MessageKey.ERROR_CRITICAL),
+            reply_markup=get_back_keyboard(user_id),
+            parse_mode=ParseMode.HTML
         )
-    
-    # Добавляем кнопку регенерации, если есть сохраненный промпт
-    if user_states[user_id].last_prompt:
-        keyboard.button(text=f"{EmojiEnum.CREATE} Повторить", callback_data=CallbackEnum.REGENERATE)
-    
-    keyboard.button(text=f"{EmojiEnum.BACK} Назад", callback_data=CallbackEnum.BACK)
-    
-    keyboard.adjust(2)
-    return keyboard.as_markup()
-
-def get_styles_keyboard(user_id: int) -> InlineKeyboardMarkup:
-    """Клавиатура выбора стиля изображения"""
-    keyboard = InlineKeyboardBuilder()
-    
-    # Добавляем кнопки стилей
-    current_style = user_settings[user_id].style
-    
-    logger.info("Создание клавиатуры стилей", extra={
-        'user_id': user_id,
-        'operation': 'CREATING_STYLES_KEYBOARD',
-        'current_style': current_style
-    })
-    
-    for style_key, style_data in IMAGE_STYLES.items():
-        # Добавляем маркер к текущему стилю
-        button_text = f"{EmojiEnum.CHECK if style_key == current_style else ''} {style_data['label']}"
-        callback_data = f"{CallbackEnum.STYLE_PREFIX}{style_key}"
-        
-        logger.info("Добавление кнопки стиля", extra={
-            'user_id': user_id,
-            'operation': 'ADDING_STYLE_BUTTON',
-            'style_key': style_key,
-            'button_text': button_text,
-            'callback_data': callback_data
-        })
-        
-        keyboard.button(
-            text=button_text,
-            callback_data=callback_data
-        )
-    
-    # Добавляем кнопку "Назад"
-    keyboard.button(
-        text=f"{EmojiEnum.BACK} Назад",
-        callback_data=CallbackEnum.BACK
-    )
-    
-    # Добавляем кнопку "Повторить", если есть последний промпт
-    if user_states[user_id].last_prompt:
-        keyboard.button(
-            text=f"{EmojiEnum.CREATE} Повторить",
-            callback_data=CallbackEnum.REGENERATE
-        )
-    
-    # Настраиваем размещение кнопок
-    keyboard.adjust(2)
-    
-    return keyboard.as_markup()
-
-def get_prompt_keyboard(user_id: int) -> InlineKeyboardMarkup:
-    """Клавиатура для режима ввода промпта"""
-    keyboard = InlineKeyboardBuilder()
-    
-    # Добавляем кнопку регенерации, если есть сохраненный промпт
-    if user_states[user_id].last_prompt:
-        keyboard.button(text=f"{EmojiEnum.CREATE} Повторить", callback_data=CallbackEnum.REGENERATE)
-    
-    keyboard.button(text=f"{EmojiEnum.BACK} Назад", callback_data=CallbackEnum.BACK)
-    
-    keyboard.adjust(2)
-    return keyboard.as_markup()
-
-def get_back_keyboard(user_id: int) -> InlineKeyboardMarkup:
-    """Клавиатура с кнопкой возврата"""
-    keyboard = InlineKeyboardBuilder()
-    
-    # Добавляем кнопку регенерации, если есть сохраненный промпт
-    if user_states[user_id].last_prompt:
-        keyboard.button(text=f"{EmojiEnum.CREATE} Повторить", callback_data=CallbackEnum.REGENERATE)
-    
-    keyboard.button(text=f"{EmojiEnum.BACK} Назад", callback_data=CallbackEnum.BACK)
-    
-    keyboard.adjust(2)
-    return keyboard.as_markup()
+        return False
 
 async def main():
     """Запуск бота"""
     logger.info("Запуск бота", extra={'operation': 'STARTUP'})
+    
+    # Регистрируем обработчики команд
+    router.message.register(send_welcome, Command(commands=['start', 'help']))
+    router.message.register(handle_text, F.text)
+
+    # Регистрируем обработчики callback-кнопок
+    router.callback_query.register(back_to_main, F.data == CallbackEnum.BACK)
+    router.callback_query.register(show_help, F.data == CallbackEnum.HELP)
+    router.callback_query.register(show_settings, F.data == CallbackEnum.SETTINGS)
+    router.callback_query.register(show_styles, F.data == CallbackEnum.STYLES)
+    router.callback_query.register(start_generation, F.data == CallbackEnum.GENERATE)
+    router.callback_query.register(regenerate_image, F.data == CallbackEnum.REGENERATE)
+    router.callback_query.register(process_size_change, lambda c: c.data.startswith(f"{CallbackEnum.SIZE_PREFIX}"))
+    router.callback_query.register(process_style_change, lambda c: c.data.startswith(f"{CallbackEnum.STYLE_PREFIX}"))
+    router.callback_query.register(process_remove_background, lambda c: c.data.startswith(f"{CallbackEnum.REMOVE_BG}_"))
+    
+    # Добавляем роутер в диспетчер
+    dp.include_router(router)
+    
     try:
         await dp.start_polling(bot)
     except Exception as e:

@@ -1,7 +1,7 @@
+import logging
 from aiogram import types
 from aiogram.types import CallbackQuery, FSInputFile, BufferedInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-import logging
 import os
 from collections import defaultdict
 import uuid as uuid_lib
@@ -77,41 +77,75 @@ async def process_size_change(callback_query: CallbackQuery):
 async def process_remove_background(callback_query: CallbackQuery):
     """Обработчик удаления фона с изображения"""
     user_id = callback_query.from_user.id
-    state = user_states[user_id]
-    
-    if not state.last_image:
-        await callback_query.answer("Нет изображения для обработки")
-        return
-    
-    status_message = await callback_query.message.edit_text(
-        Messages.REMOVING_BG,
-        parse_mode="HTML"
-    )
+    logger = logging.getLogger(__name__)
+    logger.info(f"[USER_ID:{user_id}] Начало обработки запроса на удаление фона")
     
     try:
-        # Удаляем фон
-        result = await ImageProcessor.remove_background(state.last_image)
+        # Получаем состояние пользователя
+        if user_id not in user_states:
+            logger.error(f"[USER_ID:{user_id}] Состояние пользователя не найдено")
+            await callback_query.answer("Ошибка: состояние пользователя не найдено")
+            return
+            
+        state = user_states[user_id]
+        logger.info(f"[USER_ID:{user_id}] Состояние пользователя получено")
         
-        # Отправляем результат
-        await callback_query.message.answer_photo(
-            BufferedInputFile(
-                result,
-                filename=f"no_bg_{uuid_lib.uuid4()}.png"
-            ),
-            caption=Messages.BG_REMOVED,
-            reply_markup=get_image_keyboard(state.last_image_id),
-            parse_mode="HTML"
-        )
+        # Проверяем наличие изображения
+        if not state.last_image:
+            logger.warning(f"[USER_ID:{user_id}] Нет изображения для обработки")
+            await callback_query.answer("Нет изображения для обработки")
+            return
+            
+        logger.info(f"[USER_ID:{user_id}] Найдено изображение размером {len(state.last_image)} байт")
         
-        # Удаляем статусное сообщение
-        await status_message.delete()
-        
+        # Отправляем сообщение о начале обработки
+        try:
+            status_message = await callback_query.message.edit_text(
+                Messages.REMOVING_BG,
+                parse_mode="HTML"
+            )
+            logger.info(f"[USER_ID:{user_id}] Отправлено сообщение о начале обработки")
+        except Exception as e:
+            logger.error(f"[USER_ID:{user_id}] Ошибка при отправке статусного сообщения: {str(e)}")
+            return
+            
+        try:
+            # Удаляем фон
+            logger.info(f"[USER_ID:{user_id}] Начинаем процесс удаления фона")
+            result = await ImageProcessor.remove_background(state.last_image)
+            logger.info(f"[USER_ID:{user_id}] Фон успешно удален")
+            
+            # Отправляем результат
+            await callback_query.message.answer_photo(
+                BufferedInputFile(
+                    result,
+                    filename=f"no_bg_{uuid_lib.uuid4()}.png"
+                ),
+                caption=Messages.BG_REMOVED,
+                reply_markup=get_image_keyboard(str(uuid_lib.uuid4()))
+            )
+            logger.info(f"[USER_ID:{user_id}] Результат успешно отправлен")
+            
+            await status_message.delete()
+            
+        except Exception as e:
+            error_msg = f"Ошибка при удалении фона: {str(e)}"
+            logger.error(f"[USER_ID:{user_id}] {error_msg}", exc_info=True)
+            await status_message.edit_text(
+                Messages.BG_REMOVE_ERROR,
+                parse_mode="HTML"
+            )
+            
     except Exception as e:
-        logger.error(f"Error removing background: {str(e)}")
-        await status_message.edit_text(
-            f"{Messages.ERROR_GEN.format(error=str(e))}",
-            parse_mode="HTML"
-        )
+        error_msg = f"Неожиданная ошибка в обработчике удаления фона: {str(e)}"
+        logger.error(f"[USER_ID:{user_id}] {error_msg}", exc_info=True)
+        try:
+            await callback_query.message.edit_text(
+                Messages.UNEXPECTED_ERROR,
+                parse_mode="HTML"
+            )
+        except Exception as edit_error:
+            logger.error(f"[USER_ID:{user_id}] Ошибка при отправке сообщения об ошибке: {str(edit_error)}")
     
     await callback_query.answer()
 
