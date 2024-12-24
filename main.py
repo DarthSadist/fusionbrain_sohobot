@@ -110,7 +110,7 @@ logger.addFilter(ContextFilter())
 os.makedirs('logs', exist_ok=True)
 
 from dotenv import load_dotenv
-from src.api.text2image import Text2ImageAPI
+from src.api.fusion_brain import Text2ImageAPI, CensorshipError
 from src.models.image_info import ImageInfo
 from src.constants.messages import MessageTemplate, MessageKey
 from src.constants.bot_constants import (

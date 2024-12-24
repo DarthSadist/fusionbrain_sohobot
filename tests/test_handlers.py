@@ -8,7 +8,9 @@ from src.handlers.command_handlers import (
 )
 from src.handlers.generation_handlers import (
     start_generation,
-    generate_image_with_prompt
+    generate_image_with_prompt,
+    check_generation_status,
+    remove_background
 )
 from src.constants.bot_constants import CallbackData
 
@@ -81,3 +83,45 @@ async def test_generate_image_with_prompt(mock_message):
         
         mock_api.generate.assert_called_once()
         assert mock_message.answer.call_count >= 1
+
+@pytest.mark.asyncio
+async def test_generate_image_with_prompt_full(mock_message):
+    """Тест генерации изображения по промпту"""
+    with patch('src.handlers.generation_handlers.Text2ImageAPI') as MockAPI:
+        mock_api = MockAPI.return_value
+        mock_api.generate = AsyncMock(return_value='fake-uuid')
+        mock_api.get_model = AsyncMock(return_value=[{"id": 4, "name": "Kandinsky", "version": 3.1, "type": "TEXT2IMAGE"}])
+
+        mock_message.from_user.id = 12345
+        mock_message.text = "Test prompt"
+
+        await generate_image_with_prompt(mock_message, "Test prompt")
+
+        mock_api.generate.assert_called_once()
+        mock_api.get_model.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_check_generation_status(mock_callback_query, mock_message):
+    """Тест проверки статуса генерации"""
+    with patch('src.handlers.generation_handlers.Text2ImageAPI') as MockAPI:
+        mock_api = MockAPI.return_value
+        mock_api.check_generation = AsyncMock(return_value={'status': 'DONE', 'images': ['base64-image']})
+
+        mock_callback_query.from_user.id = 12345
+
+        await check_generation_status(mock_callback_query, mock_message, 'fake-uuid')
+
+        mock_api.check_generation.assert_called_once_with('fake-uuid')
+
+@pytest.mark.asyncio
+async def test_remove_background():
+    """Тест удаления фона"""
+    with patch('src.handlers.generation_handlers.remove_bg') as mock_remove_bg:
+        mock_remove_bg.return_value = b'fake-image-data'
+
+        image_data = b'original-image-data'
+
+        result = await remove_background(image_data)
+
+        assert result == b'fake-image-data'
+        mock_remove_bg.assert_called_once()
